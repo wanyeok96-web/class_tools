@@ -19,6 +19,15 @@
     <div id="bootError" role="alert"></div>
     <div class="app-shell" id="appShell">
       <header class="app-toolbar no-print" id="appToolbar">
+        <div class="app-toolbar__meta">
+          <div class="visitor-counter" aria-live="polite">
+            <span class="visitor-counter__badge">Today <strong id="todayCount">-</strong></span>
+            <span class="visitor-counter__badge">Total <strong id="totalCount">-</strong></span>
+          </div>
+          <p class="app-copyright" role="contentinfo">
+            ⓒ 2026 클래스툴 | 경기 이솔고등학교 교사 이왕혁 | <a href="mailto:wanyeok96@gmail.com">wanyeok96@gmail.com</a>
+          </p>
+        </div>
         <div class="app-toolbar__inner">
           <button type="button" class="btn-ghost btn-back" id="btnBack" hidden aria-label="뒤로">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -31,9 +40,6 @@
               </select>
             </label>
             <div class="app-toolbar__office">
-              <p class="app-copyright" role="contentinfo">
-                ⓒ 2026 클래스툴 | 경기 이솔고등학교 교사 이왕혁 | <a href="mailto:wanyeok96@gmail.com">wanyeok96@gmail.com</a>
-              </p>
               <button type="button" class="btn-office card" id="btnOffice" aria-label="관리실">
                 <span class="btn-office__icon" aria-hidden="true">⚙️</span>
                 <span class="btn-office__label">관리실</span>

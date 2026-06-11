@@ -133,6 +133,14 @@ body {
   animation: ctFadeSlideDown 0.55s var(--ease-out) both;
 }
 
+.app-toolbar__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
 .app-toolbar__office {
   display: flex;
   flex-direction: column;
@@ -145,12 +153,42 @@ body {
 .app-copyright {
   margin: 0;
   padding: 0;
-  max-width: min(72vw, 380px);
+  flex: 1;
+  min-width: 0;
   text-align: right;
   font-size: 0.65rem;
   line-height: 1.35;
   color: var(--text-secondary);
   letter-spacing: -0.01em;
+}
+
+.visitor-counter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.visitor-counter__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(28, 28, 30, 0.06);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.visitor-counter__badge strong {
+  font-weight: 800;
+  color: var(--primary);
+  margin-left: 4px;
 }
 
 .app-copyright a {
@@ -3703,6 +3741,20 @@ textarea.input {
 
   .hero-title__main { font-size: clamp(1.9rem, 8vw, 2.6rem); }
   .hero-desc { font-size: 0.92rem; }
+
+  .app-toolbar__meta {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+
+  .visitor-counter {
+    gap: 6px;
+  }
+
+  .visitor-counter__badge {
+    font-size: 0.6rem;
+    padding: 3px 8px;
+  }
 }
 
 @media (max-width: 900px) {

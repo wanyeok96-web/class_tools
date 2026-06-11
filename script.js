@@ -4,6 +4,10 @@
 (function () {
   'use strict';
 
+  /** 방문 기록 API — 백엔드: gas/visitor-counter/Code.gs */
+  const VISITOR_API_URL =
+    'https://script.google.com/macros/s/AKfycbzkoq_3DyvPsX05x1YX2qTy2eNWKLt5fP_6fPBOIIJtZWrL2d6cyPW3kLP9eiPdvWQm/exec?action=visit';
+
   const HUB_NODES = [
     { id: 'seats', icon: '🪑', label: '자리배치', angle: -90 },
     { id: 'groups', icon: '👥', label: '모둠편성', angle: -30 },
@@ -2923,6 +2927,64 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
     el.classList.add('is-visible');
   }
 
+  function applyVisitorData(data, todayEl, totalEl) {
+    if (data?.success === true && typeof data.today === 'number' && typeof data.total === 'number') {
+      todayEl.textContent = String(data.today);
+      totalEl.textContent = String(data.total);
+      return true;
+    }
+    return false;
+  }
+
+  function fetchVisitorCountsJsonp(url) {
+    return new Promise((resolve, reject) => {
+      const cb = `_visitorCb_${Date.now()}`;
+      const script = document.createElement('script');
+      window[cb] = (data) => {
+        delete window[cb];
+        script.remove();
+        resolve(data);
+      };
+      const sep = url.includes('?') ? '&' : '?';
+      script.src = `${url}${sep}callback=${encodeURIComponent(cb)}`;
+      script.onerror = () => {
+        delete window[cb];
+        script.remove();
+        reject(new Error('JSONP failed'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  async function fetchVisitorCounts() {
+    if (!VISITOR_API_URL) return;
+    const todayEl = $('#todayCount');
+    const totalEl = $('#totalCount');
+    if (!todayEl || !totalEl) return;
+
+    try {
+      const res = await fetch(VISITOR_API_URL, { method: 'GET', mode: 'cors' });
+      if (res.ok) {
+        const data = await res.json();
+        if (applyVisitorData(data, todayEl, totalEl)) return;
+        console.warn('[visitor-counter] 응답 형식이 올바르지 않습니다:', data);
+        return;
+      }
+      console.warn('[visitor-counter] HTTP 오류:', res.status);
+    } catch (err) {
+      console.warn('[visitor-counter] fetch 실패, JSONP 시도:', err);
+    }
+
+    try {
+      const data = await fetchVisitorCountsJsonp(VISITOR_API_URL);
+      if (!applyVisitorData(data, todayEl, totalEl)) {
+        console.warn('[visitor-counter] JSONP 응답 형식이 올바르지 않습니다:', data);
+      }
+    } catch (err) {
+      console.warn('[visitor-counter] JSONP 오류:', err);
+    }
+  }
+
   /* ── 초기화 ── */
   function init() {
     try {
@@ -2944,6 +3006,7 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
       closeFullscreen();
       $('#appShell')?.classList.add('is-ready');
       requestAnimationFrame(() => playHomeEnterAnimation());
+      void fetchVisitorCounts();
     } catch (err) {
       console.error(err);
       showBootError(err.message || String(err));
