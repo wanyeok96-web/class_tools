@@ -1,0 +1,889 @@
+/* Class Tools — 출력 / PDF / 인쇄 */
+
+@media print {
+
+  @page {
+
+    size: A4 portrait;
+
+    margin: 12mm;
+
+  }
+
+
+
+  body {
+
+    background: #fff !important;
+
+    -webkit-print-color-adjust: exact;
+
+    print-color-adjust: exact;
+
+  }
+
+
+
+  body.print-seat-mode {
+
+    margin: 0 !important;
+
+    padding: 0 !important;
+
+  }
+
+  body.print-seat-mode .home-landing,
+
+  body.print-seat-mode .app-toolbar,
+
+  body.print-seat-mode .panels,
+
+  body.print-seat-mode #bootError {
+
+    display: none !important;
+
+  }
+
+
+
+  .no-print,
+
+  .app-header,
+
+  .app-shell,
+
+  .hub-dashboard,
+
+  .panel-nav,
+
+  .toast,
+
+  .modal-backdrop,
+
+  .fullscreen-overlay,
+
+  .btn-icon-only {
+
+    display: none !important;
+
+  }
+
+
+
+  .print-only {
+
+    display: block !important;
+
+    margin: 0 !important;
+
+    padding: 0 !important;
+
+  }
+
+
+
+  .print-page {
+
+    page-break-after: always;
+
+    padding: 0;
+
+    margin: 0;
+
+  }
+
+
+
+  .print-page:last-child {
+
+    page-break-after: auto;
+
+  }
+
+
+
+  .print-page--seat {
+
+    page-break-after: avoid !important;
+
+    break-after: avoid-page !important;
+
+    page-break-inside: avoid !important;
+
+    break-inside: avoid-page !important;
+
+    width: 281mm;
+
+    height: 190mm;
+
+    max-width: 281mm;
+
+    max-height: 190mm;
+
+    overflow: hidden;
+
+    display: flex;
+
+    flex-direction: column;
+
+    box-sizing: border-box;
+
+    padding: 0;
+
+    margin: 0;
+
+  }
+
+
+
+  .print-seat-header {
+
+    flex-shrink: 0;
+
+  }
+
+
+
+  .print-page--seat .print-title {
+
+    font-size: 13pt;
+
+    margin: 0 0 1mm;
+
+  }
+
+
+
+  .print-page--seat .print-meta {
+
+    font-size: 8pt;
+
+    margin-bottom: 2mm;
+
+  }
+
+
+
+  .print-page--seat .print-teacher-label {
+
+    font-size: 8pt;
+
+    padding: 1.5mm 3mm;
+
+    margin-bottom: 2mm;
+
+  }
+
+
+
+  .print-seat-body {
+
+    flex: 1;
+
+    display: flex;
+
+    flex-direction: row;
+
+    align-items: stretch;
+
+    gap: 3mm;
+
+    min-height: 0;
+
+    overflow: hidden;
+
+  }
+
+
+
+  .print-seat-main {
+
+    flex: 1;
+
+    min-width: 0;
+
+    display: flex;
+
+    flex-direction: column;
+
+    min-height: 0;
+
+  }
+
+
+
+  .print-seat-roster {
+
+    flex-shrink: 0;
+
+    width: 44mm;
+
+    border-left: 1px solid #d1d5db;
+
+    padding-left: 2.5mm;
+
+    display: flex;
+
+    flex-direction: column;
+
+    min-height: 0;
+
+    overflow: hidden;
+
+  }
+
+
+
+  .print-seat-roster__title {
+
+    font-size: 8pt;
+
+    font-weight: 700;
+
+    color: #007aff;
+
+    margin: 0 0 2mm;
+
+    text-align: center;
+
+    flex-shrink: 0;
+
+  }
+
+
+
+  .print-seat-roster__table {
+
+    width: 100%;
+
+    border-collapse: collapse;
+
+    table-layout: fixed;
+
+    flex: 1;
+
+  }
+
+
+
+  .print-seat-roster__table th,
+
+  .print-seat-roster__table td {
+
+    border: 1px solid #e5e7eb;
+
+    padding: 0.6mm 1mm;
+
+    text-align: center;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
+
+    line-height: 1.2;
+
+  }
+
+
+
+  .print-seat-roster__table th {
+
+    background: #f5f7fb;
+
+    font-weight: 600;
+
+  }
+
+
+
+  .print-seat-roster__table td:first-child {
+
+    width: 38%;
+
+    font-size: 0.92em;
+
+  }
+
+
+
+  .print-title {
+
+    font-size: 18pt;
+
+    font-weight: 700;
+
+    text-align: center;
+
+    margin: 0 0 8mm;
+
+    color: #1c1c1e;
+
+  }
+
+
+
+  .print-meta {
+
+    text-align: center;
+
+    font-size: 10pt;
+
+    color: #6a6a72;
+
+    margin-bottom: 6mm;
+
+  }
+
+
+
+  .print-seat-grid {
+
+    display: grid;
+
+    gap: 3mm;
+
+    margin: 0 auto;
+
+    max-width: 180mm;
+
+  }
+
+
+
+  .print-page--seat .print-seat-grid {
+
+    flex: 1;
+
+    width: 100%;
+
+    max-width: none;
+
+    margin: 0;
+
+    align-content: stretch;
+
+    min-height: 0;
+
+    height: 100%;
+
+  }
+
+
+
+  .print-seat {
+
+    border: 1px solid #d1d5db;
+
+    border-radius: 4mm;
+
+    padding: 3mm;
+
+    text-align: center;
+
+    min-height: 14mm;
+
+    font-size: 10pt;
+
+  }
+
+
+
+  .print-page--seat .print-seat {
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: center;
+
+    justify-content: center;
+
+    min-height: 0;
+
+    height: 100%;
+
+    border-radius: 2mm;
+
+    box-sizing: border-box;
+
+    overflow: hidden;
+
+  }
+
+
+
+  .print-page--seat .print-seat__name {
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
+
+    max-width: 100%;
+
+    line-height: 1.15;
+
+  }
+
+
+
+  .print-page--seat .print-seat__num {
+
+    line-height: 1.15;
+
+  }
+
+
+
+  .print-page--seat .print-seat--aisle,
+
+  .print-page--seat .print-seat--empty {
+
+    min-height: 0;
+
+  }
+
+
+
+  .print-seat--empty {
+
+    background: #f3f4f6;
+
+    color: #9ca3af;
+
+  }
+
+
+
+  .print-seat--aisle {
+
+    border: none;
+
+    background: transparent;
+
+  }
+
+
+
+  .print-seat__num {
+
+    font-size: 8pt;
+
+    color: #6a6a72;
+
+  }
+
+
+
+  .print-seat__name {
+
+    font-weight: 600;
+
+  }
+
+
+
+  .print-teacher-label {
+
+    text-align: center;
+
+    font-size: 11pt;
+
+    font-weight: 600;
+
+    padding: 4mm;
+
+    margin-bottom: 4mm;
+
+    border: 2px solid #007aff;
+
+    border-radius: 4mm;
+
+    color: #007aff;
+
+  }
+
+
+
+  .print-table {
+
+    width: 100%;
+
+    border-collapse: collapse;
+
+    font-size: 11pt;
+
+  }
+
+
+
+  .print-table th,
+
+  .print-table td {
+
+    border: 1px solid #d1d5db;
+
+    padding: 3mm 4mm;
+
+    text-align: center;
+
+  }
+
+
+
+  .print-table th {
+
+    background: #f5f7fb;
+
+    font-weight: 600;
+
+  }
+
+
+
+  .print-groups {
+
+    display: grid;
+
+    grid-template-columns: repeat(2, 1fr);
+
+    gap: 5mm;
+
+  }
+
+
+
+  .print-group-card {
+
+    border: 1px solid #d1d5db;
+
+    border-radius: 4mm;
+
+    padding: 4mm;
+
+  }
+
+
+
+  .print-group-card h3 {
+
+    margin: 0 0 3mm;
+
+    font-size: 12pt;
+
+    color: #007aff;
+
+  }
+
+
+
+  .print-group-card ul {
+
+    margin: 0;
+
+    padding-left: 5mm;
+
+    font-size: 10pt;
+
+  }
+
+
+
+  .print-page--presentation {
+
+    page-break-after: avoid !important;
+
+    break-after: avoid-page !important;
+
+    page-break-inside: avoid !important;
+
+    break-inside: avoid-page !important;
+
+    max-height: 273mm;
+
+    overflow: hidden;
+
+    box-sizing: border-box;
+
+    display: flex;
+
+    flex-direction: column;
+
+  }
+
+
+
+  .print-page--presentation .print-presentation-body {
+
+    flex: 1 1 auto;
+
+    min-height: 0;
+
+    overflow: hidden;
+
+  }
+
+
+
+  .print-presentation-cols {
+
+    display: grid;
+
+    width: 100%;
+
+    align-items: start;
+
+  }
+
+
+
+  .print-presentation-cols .print-table {
+
+    width: 100%;
+
+  }
+
+
+
+  .print-page--presentation .print-presentation-groups {
+
+    width: 100%;
+
+    align-items: start;
+
+  }
+
+
+
+  .print-page--presentation .print-group-card {
+
+    margin: 0;
+
+    overflow: hidden;
+
+    box-sizing: border-box;
+
+  }
+
+
+
+  .print-page--presentation .print-group-card .print-table {
+
+    width: 100%;
+
+    margin: 0;
+
+  }
+
+  .print-seat-sheet .print-seat-notice {
+
+    text-align: center;
+
+    font-size: 8pt;
+
+    margin: 0 0 2mm;
+
+    color: #1c1c1e;
+
+  }
+
+  .print-seat-info {
+
+    width: 100%;
+
+    border-collapse: collapse;
+
+    margin-bottom: 2.5mm;
+
+    table-layout: fixed;
+
+  }
+
+  .print-seat-info td {
+
+    border: 1px solid #1c1c1e;
+
+    padding: 1.5mm 2mm;
+
+    text-align: center;
+
+    vertical-align: middle;
+
+    font-size: 8.5pt;
+
+  }
+
+  .print-seat-info__class {
+
+    width: 14%;
+
+    font-size: 14pt;
+
+    font-weight: 700;
+
+  }
+
+  .print-seat-info__label {
+
+    display: block;
+
+    font-size: 7pt;
+
+    font-weight: 600;
+
+    color: #6a6a72;
+
+    margin-bottom: 0.5mm;
+
+  }
+
+  .print-seat-center {
+
+    flex: 1;
+
+    display: flex;
+
+    flex-direction: column;
+
+    min-height: 0;
+
+    gap: 1.5mm;
+
+  }
+
+  .print-seat-sheet--teacher .print-seat-center {
+
+    flex-direction: column;
+
+  }
+
+  .print-seat-grid {
+
+    flex: 1;
+
+    min-height: 0;
+
+  }
+
+  .print-seat-cell {
+
+    border: 1px solid #1c1c1e;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    text-align: center;
+
+    font-weight: 600;
+
+    box-sizing: border-box;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
+
+    padding: 0.5mm 1mm;
+
+    min-height: 0;
+
+  }
+
+  .print-seat-cell--empty,
+
+  .print-seat-cell--aisle {
+
+    border-color: #d1d5db;
+
+    background: transparent;
+
+  }
+
+  .print-seat-cell--aisle {
+
+    border: none;
+
+  }
+
+  .print-seat-desk {
+
+    border: 2px solid #1c1c1e;
+
+    text-align: center;
+
+    font-weight: 700;
+
+    font-size: 10pt;
+
+    padding: 1.5mm;
+
+    flex-shrink: 0;
+
+    background: #fff;
+
+  }
+
+  .print-seat-desk--bottom {
+
+    margin-top: 1mm;
+
+  }
+
+  .print-seat-desk--top {
+
+    margin-bottom: 1mm;
+
+  }
+
+  .print-seat-desk-wrap {
+
+    display: flex;
+
+    justify-content: center;
+
+    flex-shrink: 0;
+
+    margin-top: 1mm;
+
+  }
+
+  .print-seat-desk--compact {
+
+    width: auto;
+
+    min-width: 22mm;
+
+    max-width: 32mm;
+
+    padding: 0.8mm 3mm;
+
+    font-size: 8pt;
+
+  }
+
+  .print-seat-sheet .print-seat-roster__title {
+
+    font-size: 8pt;
+
+    letter-spacing: 0.02em;
+
+  }
+
+}
+
+
+
+.print-only {
+
+  display: none;
+
+}
+
+
