@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="print.css" />
     <style>
-      body { background: #f5f7fb; color: #1c1c1e; margin: 0; }
+      body { color: #1c1c1e; margin: 0; }
       #bootError { display: none; margin: 16px; padding: 16px; background: #fff3f3; border: 1px solid #ff3b30; border-radius: 12px; color: #c00; font-family: sans-serif; }
       #bootError.is-visible { display: block; }
     </style>
@@ -57,24 +57,29 @@
               <div class="hero-orb hero-orb--2"></div>
               <div class="hero-orb hero-orb--3"></div>
             </div>
-            <svg class="hub-lines" id="hubLines" aria-hidden="true"></svg>
-            <div class="hub-center" id="hubCenter">
-              <div class="hub-center__hero hero" id="homeHero" aria-labelledby="heroTitle">
-                <p class="hero-badge">학급 운영 도구</p>
-                <h1 class="hero-title" id="heroTitle">
-                  <span class="hero-title__main">Class Tools</span>
-                </h1>
-                <p class="hero-desc">교실 운영에 필요한 모든 도구를 한 곳에서.</p>
-                <p class="hero-welcome" id="heroWelcome"></p>
-                <label class="hero-class-field">
-                  <span class="hero-class-label">학급 선택</span>
-                  <select id="heroClassSelect" class="input input-select hero-class-select" aria-label="학급 선택">
-                    <option value="">학급을 등록해주세요</option>
-                  </select>
-                </label>
+            <div class="hub-orbit" id="hubOrbit">
+              <div class="hub-orbit__stage" id="hubOrbitStage">
+                <svg class="hub-spokes" id="hubSpokes" aria-hidden="true"></svg>
+                <div class="hub-hero hub-hero--open" id="hubHeroCard">
+                  <div class="hero" id="homeHero" aria-labelledby="heroTitle">
+                    <span class="hero-badge">학급 운영 도구</span>
+                    <h1 class="hero-title" id="heroTitle">
+                      <span class="hero-title__main">Class Tools</span>
+                    </h1>
+                    <p class="hero-desc">교실 운영에 필요한 모든 도구를 한 곳에서.</p>
+                    <p class="hero-welcome" id="heroWelcome"></p>
+                    <label class="hero-class-field">
+                      <span class="hero-class-label">학급 선택</span>
+                      <select id="heroClassSelect" class="input input-select hero-class-select" aria-label="학급 선택">
+                        <option value="">학급을 등록해주세요</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div class="hub-orbit__nodes" id="hubNodes" aria-label="기능 메뉴"></div>
               </div>
             </div>
-          <nav class="hub-nodes" id="hubNodes" aria-label="기능 메뉴"></nav>
+            <nav class="hub-mobile" id="hubMobile" aria-label="기능 메뉴" hidden></nav>
         </div>
         </section>
       </div>
