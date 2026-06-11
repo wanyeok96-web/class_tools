@@ -178,7 +178,17 @@
     $('#ladderTabWinners').hidden = tabId !== 'winners';
   }
 
-  function renderLadderWinnerSettings() {
+  function updateLadderWinnerHint() {
+    const hint = $('#ladderWinnerHint');
+    if (!hint) return;
+    const count = getLadderParticipants().length;
+    const w = getLadderWinnerCount(count);
+    hint.textContent = count
+      ? `참가자 ${count}명 · 당첨 ${w}명 (도착 칸 ${w}개가 선정)`
+      : '참가자를 먼저 선택해주세요.';
+  }
+
+  function renderLadderWinnerSettings({ resetValue = true } = {}) {
     const participants = getLadderParticipants();
     const classId = getClassId();
     const count = participants.length;
@@ -186,16 +196,34 @@
     const input = $('#ladderWinnerCount');
     if (input) {
       input.max = String(maxWin);
-      const saved = ctLoadLadderWinCount(classId, maxWin);
-      input.value = String(Math.min(saved, maxWin));
+      input.min = '1';
+      input.disabled = count < 1;
+      if (resetValue || document.activeElement !== input) {
+        const saved = ctLoadLadderWinCount(classId, maxWin);
+        input.value = String(Math.min(saved, maxWin));
+      } else {
+        const current = parseInt(input.value, 10);
+        if (!current || current < 1) input.value = '1';
+        else if (current > maxWin) input.value = String(maxWin);
+      }
     }
-    const hint = $('#ladderWinnerHint');
-    if (hint) {
-      const w = getLadderWinnerCount(count);
-      hint.textContent = count
-        ? `참가자 ${count}명 · 당첨 ${w}명 (도착 칸 ${w}개가 선정)`
-        : '참가자를 먼저 선택해주세요.';
-    }
+    updateLadderWinnerHint();
+  }
+
+  function ladderPieceBadgeHtml(colIndex, student, className = 'ladder-pool-item__badge') {
+    const piece = ctGetLadderPieceMeta(colIndex, student);
+    return `<span class="${className}" style="--badge-color:${piece.color}" aria-hidden="true">${esc(piece.char)}</span>`;
+  }
+
+  function ladderPieceSvg(x, y, colIndex, student, isWinner) {
+    const piece = ctGetLadderPieceMeta(colIndex, student);
+    const r = isWinner ? 16 : 14;
+    const cls = isWinner ? 'ladder-piece ladder-piece--winner' : 'ladder-piece';
+    return `
+      <g class="${cls}" transform="translate(${x}, ${y})">
+        <circle class="ladder-piece__circle" r="${r}" fill="${piece.color}" stroke="rgba(255,255,255,0.9)" stroke-width="1.5"/>
+        <text class="ladder-piece__char" text-anchor="middle" dominant-baseline="central">${esc(piece.char)}</text>
+      </g>`;
   }
 
   function renderLadderPool() {
@@ -219,11 +247,13 @@
     const selectedOrder = students.filter((s) => poolIds.has(s.id));
     grid.innerHTML = students.map((s) => {
       const col = selectedOrder.findIndex((p) => p.id === s.id);
-      const emoji = col >= 0 ? CT_LADDER_PIECES[col % CT_LADDER_PIECES.length] : '·';
+      const badge = col >= 0
+        ? ladderPieceBadgeHtml(col, s)
+        : '<span class="ladder-pool-item__badge ladder-pool-item__badge--empty" aria-hidden="true">·</span>';
       return `
       <label class="ladder-pool-item">
         <input type="checkbox" class="ladder-pool-check" value="${esc(s.id)}" ${poolIds.has(s.id) ? 'checked' : ''} />
-        <span class="ladder-pool-item__emoji" aria-hidden="true">${emoji}</span>
+        ${badge}
         <span>${esc(formatStudent(s))}</span>
       </label>`;
     }).join('');
@@ -325,12 +355,10 @@
     }
 
     participants.forEach((s, c) => {
-      const emoji = CT_LADDER_PIECES[c % CT_LADDER_PIECES.length];
       const t = progresses ? (progresses[c] ?? 0) : 0;
       const pos = ctInterpolatePath(paths[c].points, t);
       const landed = t >= 1 && winningBottoms.has(paths[c].endCol);
-      const cls = landed ? 'ladder-piece ladder-piece--winner' : 'ladder-piece';
-      svg += `<text class="${cls}" x="${pos.x}" y="${pos.y}" text-anchor="middle" dominant-baseline="middle">${emoji}</text>`;
+      svg += ladderPieceSvg(pos.x, pos.y, c, s, landed);
     });
 
     svg += '</svg>';
@@ -338,12 +366,12 @@
   }
 
   function animateLadderPieces() {
-    const duration = Math.max(2200, Math.min(4500, ladderState.participants.length * 100));
+    const duration = Math.max(4500, Math.min(9500, ladderState.participants.length * 220));
     const start = performance.now();
     return new Promise((resolve) => {
       function frame(now) {
         const raw = Math.min(1, (now - start) / duration);
-        const ease = 1 - Math.pow(1 - raw, 2.8);
+        const ease = 1 - Math.pow(1 - raw, 3.4);
         const progresses = ladderState.participants.map(() => ease);
         drawLadderSvg(progresses);
         if (raw < 1) requestAnimationFrame(frame);
@@ -364,7 +392,7 @@
         ${winners.map((w, i) => `
           <li class="ladder-winner-row">
             <span class="ladder-winner-row__rank">${i + 1}</span>
-            <span class="ladder-winner-row__emoji">${w.emoji}</span>
+            <span class="ladder-winner-row__badge" style="--badge-color:${w.color}">${esc(w.char)}</span>
             <span class="ladder-winner-row__name">${esc(formatStudent(w.student))}</span>
           </li>
         `).join('')}
@@ -1579,10 +1607,18 @@
       const classId = getClassId();
       const n = getLadderParticipants().length;
       ctSaveLadderWinCount(classId, getLadderWinnerCount(n));
-      renderLadderWinnerSettings();
+      renderLadderWinnerSettings({ resetValue: false });
       resetLadderBoard();
     });
-    $('#ladderWinnerCount')?.addEventListener('input', renderLadderWinnerSettings);
+    $('#ladderWinnerCount')?.addEventListener('input', () => {
+      const input = $('#ladderWinnerCount');
+      const maxWin = Math.max(1, Math.min(5, getLadderParticipants().length || 5));
+      if (input) {
+        const current = parseInt(input.value, 10);
+        if (current > maxWin) input.value = String(maxWin);
+      }
+      updateLadderWinnerHint();
+    });
 
     $('#btnLadderSelectAll')?.addEventListener('click', () => ladderSelectAll(true));
     $('#btnLadderDeselectAll')?.addEventListener('click', () => {

@@ -9,13 +9,64 @@
     'https://script.google.com/macros/s/AKfycbzkoq_3DyvPsX05x1YX2qTy2eNWKLt5fP_6fPBOIIJtZWrL2d6cyPW3kLP9eiPdvWQm/exec?action=visit';
 
   const HUB_NODES = [
-    { id: 'seats', icon: '🪑', label: '자리배치', angle: -90 },
-    { id: 'groups', icon: '👥', label: '모둠편성', angle: -30 },
-    { id: 'random', icon: '🎲', label: '랜덤게임', angle: 30 },
-    { id: 'presentation', icon: '📋', label: '발표순서', angle: 90 },
-    { id: 'duties', icon: '🧹', label: '당번관리', angle: 150 },
-    { id: 'timer', icon: '⏱️', label: '타이머', angle: 210 },
+    { id: 'seats', icon: '🪑', label: '자리배치' },
+    { id: 'groups', icon: '👥', label: '모둠편성' },
+    { id: 'random', icon: '🎲', label: '랜덤게임' },
+    { id: 'presentation', icon: '📋', label: '발표순서' },
+    { id: 'duties', icon: '🧹', label: '당번관리' },
+    { id: 'timer', icon: '⏱️', label: '타이머' },
+    { id: 'signature', icon: '✍️', label: '서명·도장' },
   ];
+
+  /** 허브 마인드맵 — 노드 수에 따라 각도·반경 자동 배치 (겹침 방지) */
+  const HUB_LAYOUT = {
+    nodeW: 108,
+    nodeH: 76,
+    gap: 14,
+    radiusMin: 36,
+    radiusMax: 46,
+    startAngle: -90,
+  };
+
+  function getHubCanvasSize() {
+    const canvas = $('#hubCanvas');
+    if (!canvas) return 720;
+    const rect = canvas.getBoundingClientRect();
+    const size = Math.min(rect.width, rect.height);
+    return size > 10 ? size : 720;
+  }
+
+  function computeHubLayout(nodeCount, canvasSize = 720) {
+    const count = Math.max(1, nodeCount);
+    const step = 360 / count;
+    const angles = Array.from(
+      { length: count },
+      (_, i) => HUB_LAYOUT.startAngle + i * step,
+    );
+    if (count === 1) {
+      return { angles, radius: HUB_LAYOUT.radiusMax, step };
+    }
+    const span = Math.max(HUB_LAYOUT.nodeW, HUB_LAYOUT.nodeH) + HUB_LAYOUT.gap;
+    const sinHalf = Math.sin(Math.PI / count);
+    const neededPct = ((span / 2) / (sinHalf * canvasSize)) * 100 * 1.08;
+    const radius = Math.min(
+      HUB_LAYOUT.radiusMax,
+      Math.max(HUB_LAYOUT.radiusMin, neededPct),
+    );
+    return { angles, radius, step };
+  }
+
+  function getHubLayout() {
+    return computeHubLayout(HUB_NODES.length, getHubCanvasSize());
+  }
+
+  function hubPolarToPercent(angleDeg, radiusPct) {
+    const rad = (angleDeg * Math.PI) / 180;
+    return {
+      x: 50 + radiusPct * Math.cos(rad),
+      y: 50 + radiusPct * Math.sin(rad),
+    };
+  }
 
   const $ = (sel, ctx = document) => ctx.querySelector(sel);
   const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
@@ -54,6 +105,7 @@
     clearTimeout(showToast._t);
     showToast._t = setTimeout(() => { el.hidden = true; }, 2800);
   }
+  window.ctShowToast = showToast;
 
   function showModal(title, bodyHtml, footerHtml = '', options = {}) {
     const backdrop = $('#modalBackdrop');
@@ -94,26 +146,36 @@
   }
 
   /* ── 허브 대시보드 ── */
+  function applyHubNodePositions() {
+    const container = $('#hubNodes');
+    if (!container) return;
+    const layout = getHubLayout();
+    const nodes = container.querySelectorAll('.hub-node');
+    HUB_NODES.forEach((node, i) => {
+      const el = nodes[i];
+      if (!el) return;
+      const { x, y } = hubPolarToPercent(layout.angles[i], layout.radius);
+      el.style.left = `${x}%`;
+      el.style.top = `${y}%`;
+    });
+  }
+
   function renderHub() {
     const container = $('#hubNodes');
+    if (!container) return;
     container.innerHTML = '';
-    const radius = 43;
 
     HUB_NODES.forEach((node, i) => {
-      const rad = (node.angle * Math.PI) / 180;
-      const x = 50 + radius * Math.cos(rad);
-      const y = 50 + radius * Math.sin(rad);
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'hub-node card';
-      el.style.left = `${x}%`;
-      el.style.top = `${y}%`;
       el.style.setProperty('--hub-i', i);
       el.dataset.panel = node.id;
       el.innerHTML = `<span class="hub-node__icon">${node.icon}</span><span class="hub-node__label">${node.label}</span>`;
       container.appendChild(el);
     });
 
+    applyHubNodePositions();
     drawHubLines();
   }
 
@@ -168,7 +230,8 @@
     const size = Math.min(rect.width, rect.height);
     const innerRx = size * 0.21;
     const innerRy = size * 0.19;
-    const outerR = size * 0.43;
+    const layout = getHubLayout();
+    const outerR = size * (layout.radius / 100);
 
     svg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
     svg.innerHTML = '';
@@ -176,8 +239,8 @@
     const defs = document.createElementNS(NS, 'defs');
     svg.appendChild(defs);
 
-    HUB_NODES.forEach((node, i) => {
-      const rad = (node.angle * Math.PI) / 180;
+    layout.angles.forEach((angleDeg, i) => {
+      const rad = (angleDeg * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
       const sx = cx + innerRx * cos;
@@ -246,6 +309,7 @@
       presentation: renderPresentation,
       duties: renderDuties,
       timer: () => {},
+      signature: () => window.CTSignature?.init(),
     };
     renderers[panelId]?.();
   }
@@ -2581,8 +2645,8 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
     $('#panelClassSelect')?.addEventListener('change', onClassSelectChange);
     window.addEventListener('resize', () => {
       if (!currentPanel) {
+        applyHubNodePositions();
         drawHubLines();
-        playHomeEnterAnimation();
       }
     });
 
@@ -3005,7 +3069,11 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
       closeModal();
       closeFullscreen();
       $('#appShell')?.classList.add('is-ready');
-      requestAnimationFrame(() => playHomeEnterAnimation());
+      requestAnimationFrame(() => {
+        applyHubNodePositions();
+        drawHubLines();
+        playHomeEnterAnimation();
+      });
       void fetchVisitorCounts();
     } catch (err) {
       console.error(err);

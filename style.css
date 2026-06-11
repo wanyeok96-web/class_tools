@@ -1837,11 +1837,27 @@ textarea.input {
   flex-wrap: wrap;
 }
 
-.ladder-pool-item__emoji {
-  font-size: 1.1rem;
-  width: 1.4rem;
-  text-align: center;
+.ladder-pool-item__badge {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--badge-color, var(--primary));
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.ladder-pool-item__badge--empty {
+  background: var(--border);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .ladder-pool-grid {
@@ -1950,14 +1966,24 @@ textarea.input {
 }
 
 .ladder-piece {
-  font-size: 22px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
-  transition: transform 0.15s ease;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.18));
+}
+
+.ladder-piece__char {
+  fill: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: Pretendard, -apple-system, sans-serif;
+  pointer-events: none;
 }
 
 .ladder-piece--winner {
-  font-size: 26px;
-  filter: drop-shadow(0 0 8px rgba(255, 149, 0, 0.6));
+  filter: drop-shadow(0 0 10px rgba(255, 149, 0, 0.55));
+}
+
+.ladder-piece--winner .ladder-piece__char {
+  font-size: 15px;
+  font-weight: 800;
 }
 
 .ladder-modal-intro {
@@ -2000,9 +2026,19 @@ textarea.input {
   flex-shrink: 0;
 }
 
-.ladder-winner-row__emoji {
-  font-size: 1.6rem;
+.ladder-winner-row__badge {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--badge-color, var(--primary));
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .ladder-winner-row__name {
@@ -3412,6 +3448,198 @@ textarea.input {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.65);
   letter-spacing: 0.04em;
+}
+
+/* Signature maker */
+.signature-workspace {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.signature-mode-tabs {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 20px;
+  background: var(--bg-page);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.signature-tab {
+  min-height: 40px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.signature-tab.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.signature-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signature-toolbar,
+.signature-stamp-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+}
+
+.signature-field {
+  min-width: 120px;
+}
+
+.signature-field-grow {
+  flex: 1;
+  min-width: 180px;
+}
+
+.signature-field input[type="range"] {
+  width: 100%;
+  min-width: 100px;
+}
+
+.signature-checkbox {
+  margin-bottom: 8px;
+}
+
+.signature-stamp-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.signature-color-chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background: color-mix(in srgb, var(--chip-color) 12%, var(--bg-page));
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--transition), transform 0.15s ease;
+}
+
+.signature-color-chip::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--chip-color);
+  vertical-align: middle;
+}
+
+.signature-color-chip.is-active {
+  border-color: var(--chip-color);
+}
+
+.signature-color-chip:hover {
+  transform: translateY(-1px);
+}
+
+.signature-preview-wrap {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  transition: background 0.2s ease;
+}
+
+.signature-preview-wrap--light {
+  background: #f8f9fc;
+}
+
+.signature-preview-wrap--dark {
+  background: #0a0a0f;
+}
+
+.signature-preview-wrap--checker {
+  background-color: #e8eaef;
+  background-image:
+    linear-gradient(45deg, #d0d4dc 25%, transparent 25%),
+    linear-gradient(-45deg, #d0d4dc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d0d4dc 75%),
+    linear-gradient(-45deg, transparent 75%, #d0d4dc 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.signature-preview-wrap--stamp {
+  min-height: 300px;
+}
+
+.signature-draw-canvas {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  min-height: 160px;
+  cursor: crosshair;
+  touch-action: none;
+  border-radius: 4px;
+}
+
+.signature-stamp-canvas {
+  display: block;
+  width: min(280px, 70vw);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.signature-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.signature-preview-bgs {
+  display: inline-flex;
+  gap: 6px;
+  padding: 3px;
+  background: var(--bg-page);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.signature-preview-bg {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.signature-preview-bg.is-active {
+  background: var(--bg-card);
+  color: var(--primary);
+  box-shadow: var(--shadow);
 }
 
 /* Modal */

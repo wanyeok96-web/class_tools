@@ -19,10 +19,24 @@ const CT_DEFAULT_ROULETTE_CUSTOM = [
 const CT_PINBALL_POOL_PREFIX = 'ct-pinball-pool:';
 const CT_PINBALL_WIN_COUNT_PREFIX = 'ct-pinball-win-count:';
 
-const CT_LADDER_PIECES = [
-  '🐴', '🐶', '🐱', '🐰', '🦊', '🐻', '🐼', '🐨', '🦁', '🐯',
-  '🐸', '🐷', '🐮', '🐔', '🦄', '🐧', '🐹', '🐙', '🦉', '🐢',
+const CT_LADDER_COLORS = [
+  '#007AFF', '#FF9500', '#34C759', '#AF52DE', '#FF3B30',
+  '#5856D6', '#00C7BE', '#FF2D55', '#5AC8FA', '#FFCC00',
+  '#8E8E93', '#A2845E', '#30B0C7', '#FF6482', '#64D2FF',
 ];
+
+function ctGetLadderSurname(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return '?';
+  return trimmed[0];
+}
+
+function ctGetLadderPieceMeta(colIndex, student) {
+  return {
+    color: CT_LADDER_COLORS[colIndex % CT_LADDER_COLORS.length],
+    char: ctGetLadderSurname(student?.name),
+  };
+}
 
 function ctLadderPoolKey(classId) {
   return `${CT_LADDER_POOL_PREFIX}${classId}`;
@@ -148,7 +162,8 @@ function ctGetLadderWinners(rungs, participants, winningBottomSet) {
   participants.forEach((student, startCol) => {
     const endCol = ctTraceLadderColumn(rungs, startCol);
     if (winningBottomSet.has(endCol)) {
-      winners.push({ student, startCol, endCol, emoji: CT_LADDER_PIECES[startCol % CT_LADDER_PIECES.length] });
+      const piece = ctGetLadderPieceMeta(startCol, student);
+      winners.push({ student, startCol, endCol, color: piece.color, char: piece.char });
     }
   });
   return winners;
@@ -370,7 +385,9 @@ if (typeof module !== 'undefined') {
     ctTraceLadderColumn,
     ctFindTopColumnForBottom,
     ctPickDiceStudentIndex,
-    CT_LADDER_PIECES,
+    CT_LADDER_COLORS,
+    ctGetLadderSurname,
+    ctGetLadderPieceMeta,
     ctLoadLadderWinCount,
     ctSaveLadderWinCount,
     ctPickWinningBottomSlots,

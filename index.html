@@ -74,14 +74,7 @@
                 </label>
               </div>
             </div>
-          <nav class="hub-nodes" id="hubNodes" aria-label="기능 메뉴">
-            <button type="button" class="hub-node card hub-node--fallback" style="left:50%;top:8%" data-panel="seats"><span class="hub-node__icon">🪑</span><span class="hub-node__label">자리배치</span></button>
-            <button type="button" class="hub-node card hub-node--fallback" style="left:83%;top:24%" data-panel="groups"><span class="hub-node__icon">👥</span><span class="hub-node__label">모둠편성</span></button>
-            <button type="button" class="hub-node card hub-node--fallback" style="left:91%;top:59%" data-panel="random"><span class="hub-node__icon">🎲</span><span class="hub-node__label">랜덤게임</span></button>
-            <button type="button" class="hub-node card hub-node--fallback" style="left:50%;top:91%" data-panel="presentation"><span class="hub-node__icon">📋</span><span class="hub-node__label">발표순서</span></button>
-            <button type="button" class="hub-node card hub-node--fallback" style="left:9%;top:59%" data-panel="duties"><span class="hub-node__icon">🧹</span><span class="hub-node__label">당번관리</span></button>
-            <button type="button" class="hub-node card hub-node--fallback" style="left:17%;top:24%" data-panel="timer"><span class="hub-node__icon">⏱️</span><span class="hub-node__label">타이머</span></button>
-          </nav>
+          <nav class="hub-nodes" id="hubNodes" aria-label="기능 메뉴"></nav>
         </div>
         </section>
       </div>
@@ -588,6 +581,88 @@
             </div>
           </div>
         </section>
+
+        <!-- 서명·도장 -->
+        <section class="panel" data-panel="signature" hidden>
+          <div class="panel-head">
+            <h2>✍️ 서명·도장 만들기</h2>
+            <p>손글씨 싸인과 한글 도장을 만들어 투명 배경 PNG로 저장하세요</p>
+          </div>
+          <div class="signature-workspace card">
+            <div class="signature-mode-tabs" role="tablist" aria-label="서명·도장 모드">
+              <button type="button" class="signature-tab is-active" role="tab" aria-selected="true" data-signature-tab="draw" id="signatureTabBtnDraw">손글씨 싸인</button>
+              <button type="button" class="signature-tab" role="tab" aria-selected="false" data-signature-tab="stamp" id="signatureTabBtnStamp">한글 도장</button>
+            </div>
+
+            <div class="signature-tab-panel" id="signatureTabDraw" role="tabpanel">
+              <div class="signature-toolbar">
+                <label class="field signature-field">
+                  <span class="field-label">선 굵기</span>
+                  <input type="range" id="signatureStrokeWidth" min="1" max="8" value="3" />
+                </label>
+                <label class="field signature-field">
+                  <span class="field-label">선 색</span>
+                  <input type="color" id="signatureStrokeColor" value="#1a1a1a" />
+                </label>
+                <button type="button" class="btn btn-secondary btn-sm-inline" id="btnSignatureUndo">되돌리기</button>
+                <button type="button" class="btn btn-secondary btn-sm-inline" id="btnSignatureClear">전체 지우기</button>
+              </div>
+              <div class="signature-preview-wrap signature-preview-wrap--light" id="signatureDrawPreview">
+                <canvas id="signatureDrawCanvas" class="signature-draw-canvas" aria-label="싸인 그리기"></canvas>
+              </div>
+              <p class="field-hint">마우스나 터치로 싸인을 그린 뒤 PNG로 저장하세요. 배경은 투명합니다.</p>
+              <div class="signature-actions">
+                <div class="signature-preview-bgs" role="group" aria-label="미리보기 배경">
+                  <button type="button" class="signature-preview-bg is-active" data-preview-bg="light">밝은 배경</button>
+                  <button type="button" class="signature-preview-bg" data-preview-bg="dark">어두운 배경</button>
+                  <button type="button" class="signature-preview-bg" data-preview-bg="checker">투명</button>
+                </div>
+                <button type="button" class="btn btn-primary" id="btnSignatureDrawPng">PNG 저장</button>
+              </div>
+            </div>
+
+            <div class="signature-tab-panel" id="signatureTabStamp" role="tabpanel" hidden>
+              <div class="signature-stamp-form">
+                <label class="field signature-field-grow">
+                  <span class="field-label">도장 글자 (2~4자)</span>
+                  <input type="text" id="signatureStampText" class="input" lang="ko" maxlength="4" autocomplete="off" placeholder="예: 이왕혁 또는 홍길동" />
+                </label>
+                <label class="field">
+                  <span class="field-label">크기</span>
+                  <select id="signatureStampSize" class="input input-select">
+                    <option value="256">256px</option>
+                    <option value="512" selected>512px</option>
+                    <option value="1024">1024px</option>
+                  </select>
+                </label>
+                <label class="checkbox signature-checkbox">
+                  <input type="checkbox" id="signatureStampAppendIn" checked /> 끝에 「인」 붙이기
+                </label>
+                <label class="checkbox signature-checkbox">
+                  <input type="checkbox" id="signatureStampBorder" checked /> 원형 테두리
+                </label>
+              </div>
+              <div class="signature-stamp-colors" role="group" aria-label="도장 색상">
+                <button type="button" class="signature-color-chip is-active" data-color="#C41E3A" title="인주" style="--chip-color:#C41E3A">인주</button>
+                <button type="button" class="signature-color-chip" data-color="#1a1a1a" title="검정" style="--chip-color:#1a1a1a">검정</button>
+                <button type="button" class="signature-color-chip" data-color="#1e4d8c" title="청색" style="--chip-color:#1e4d8c">청색</button>
+                <button type="button" class="signature-color-chip" data-color="#b8860b" title="금색" style="--chip-color:#b8860b">금색</button>
+              </div>
+              <p class="field-hint" id="signatureStampHint">2~4자 한글을 입력하세요 (「인」 자동 추가 가능)</p>
+              <div class="signature-preview-wrap signature-preview-wrap--light signature-preview-wrap--stamp" id="signatureStampPreview">
+                <canvas id="signatureStampCanvas" class="signature-stamp-canvas" aria-label="도장 미리보기"></canvas>
+              </div>
+              <div class="signature-actions">
+                <div class="signature-preview-bgs" role="group" aria-label="미리보기 배경">
+                  <button type="button" class="signature-preview-bg is-active" data-preview-bg="light">밝은 배경</button>
+                  <button type="button" class="signature-preview-bg" data-preview-bg="dark">어두운 배경</button>
+                  <button type="button" class="signature-preview-bg" data-preview-bg="checker">투명</button>
+                </div>
+                <button type="button" class="btn btn-primary" id="btnSignatureStampPng">PNG 저장</button>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -624,6 +699,7 @@
     <script src="pinball-engine.js"></script>
     <script src="scoreboard-manager.js"></script>
     <script src="games.js"></script>
+    <script src="signature-maker.js"></script>
     <script src="script.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
