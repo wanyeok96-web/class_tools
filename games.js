@@ -1159,20 +1159,39 @@
         : '시작 버튼을 누르면 구슬이 떨어집니다!';
     }
     $('#btnPinballStart')?.toggleAttribute('disabled', participants.length < 2);
+    $('#btnPinballShake')?.toggleAttribute('disabled', true);
+  }
+
+  function setPinballShakeEnabled(enabled) {
+    const btn = $('#btnPinballShake');
+    if (!btn) return;
+    btn.toggleAttribute('disabled', !enabled);
+  }
+
+  function pinballShakeBoard(engine, wrapEl) {
+    if (!engine?.running) return;
+    const ok = engine.shake();
+    if (!ok) {
+      toast('잠시 후 다시 튕길 수 있습니다.');
+      return;
+    }
+    wrapEl?.classList.remove('is-shaking');
+    void wrapEl?.offsetWidth;
+    wrapEl?.classList.add('is-shaking');
   }
 
   function renderPinballLeaderboard(finished) {
     const list = $('#pinballLeaderboard');
     if (!list) return;
     if (!finished.length) {
-      list.innerHTML = '<p class="pinball-leaderboard__empty">경주가 시작되면 순위가 표시됩니다</p>';
+      list.innerHTML = '<p class="pinball-leaderboard__empty">경주가 시작되면 도착 순서가 표시됩니다</p>';
       return;
     }
     list.innerHTML = finished.map((ball) => `
       <div class="pinball-rank-row" style="--ball-color:${ball.color}">
         <span class="pinball-rank-row__order">${ball.finishOrder}</span>
         <span class="pinball-rank-row__ball" aria-hidden="true"></span>
-        <span class="pinball-rank-row__name">${esc(ball.number)}. ${esc(ball.name)}</span>
+        <span class="pinball-rank-row__name">${esc(ball.displayLabel || ball.name)}</span>
       </div>
     `).join('');
   }
@@ -1186,7 +1205,7 @@
           <li class="ladder-winner-row">
             <span class="ladder-winner-row__rank">${i + 1}</span>
             <span class="ladder-winner-row__emoji" style="background:${w.color};border-radius:50%;width:28px;height:28px;display:inline-block"></span>
-            <span class="ladder-winner-row__name">${esc(w.number)}. ${esc(w.name)}</span>
+            <span class="ladder-winner-row__name">${esc(w.displayLabel || w.name)}</span>
           </li>
         `).join('')}
       </ul>`;
@@ -1250,13 +1269,20 @@
     pinballRunning = true;
     const btn = $('#btnPinballStart');
     if (btn) btn.disabled = true;
+    setPinballShakeEnabled(true);
     const status = $('#pinballStatus');
-    if (status) status.textContent = '구슬이 떨어지는 중…';
+    const boardWrap = document.querySelector('.pinball-board-wrap');
+    if (status) status.textContent = '⚡ 회전 장애물을 뚫고 골인까지!';
 
     pinballEngine.setup(participants, winCount);
     renderPinballLeaderboard([]);
 
     pinballEngine.start({
+      onShake: () => {
+        boardWrap?.classList.remove('is-shaking');
+        void boardWrap?.offsetWidth;
+        boardWrap?.classList.add('is-shaking');
+      },
       onFrame: (balls) => {
         if (!status) return;
         const active = balls.filter((b) => !b.finished);
@@ -1267,7 +1293,9 @@
         } else if (finished > 0 && active.length > 0) {
           status.textContent = `${finished}명 도착 · 나머지 ${active.length}개 구슬 경주 중…`;
         } else if (balls.some((b) => b.frame < b.releaseFrame)) {
-          status.textContent = '구슬이 하나씩 출발합니다…';
+          status.textContent = '🚀 구슬이 하나씩 출발합니다…';
+        } else if (active.length > 0) {
+          status.textContent = `🌀 ${active.length}개 구슬이 장애물 속을 질주 중!`;
         }
       },
       onFinishOrder: (_ball, order) => {
@@ -1281,6 +1309,8 @@
       onComplete: (order) => {
         pinballRunning = false;
         if (btn) btn.disabled = false;
+        setPinballShakeEnabled(false);
+        boardWrap?.classList.remove('is-shaking');
         if (status) status.textContent = '경주 완료!';
 
         if ($('#pinballNoDuplicate')?.checked && classId) {
@@ -1321,24 +1351,49 @@
     content.className = 'fullscreen-content fullscreen-pinball';
     content.innerHTML = `
       <div class="pinball-fs-wrap">
-        <canvas id="fsPinballCanvas" class="pinball-canvas" aria-label="핀볼 경주"></canvas>
+        <div class="pinball-board-wrap pinball-board-wrap--fs" id="fsPinballBoardWrap">
+          <canvas id="fsPinballCanvas" class="pinball-canvas" aria-label="핀볼 경주"></canvas>
+        </div>
         <p class="pinball-status pinball-status--fs" id="fsPinballStatus">구슬이 떨어지는 중…</p>
         <div class="pinball-fs-leaderboard" id="fsPinballLeaderboard"></div>
+        <div class="pinball-fs-actions">
+          <button type="button" class="btn btn-secondary" id="btnFsPinballShake">📳 튕기기</button>
+        </div>
       </div>`;
 
     const canvas = $('#fsPinballCanvas');
     const fsEngine = new CTPinball.PinballEngine(canvas);
+    fsEngine.tallBoard = true;
+    fsEngine.cameraFollowEnabled = true;
     fsEngine.setup(participants, winCount);
 
     const renderFsLeaderboard = (finished) => {
       const list = $('#fsPinballLeaderboard');
       if (!list) return;
       list.innerHTML = finished.map((ball) => `
-        <span class="pinball-fs-chip" style="--ball-color:${ball.color}">${ball.finishOrder}. ${esc(ball.number)}</span>
+        <span class="pinball-fs-chip" style="--ball-color:${ball.color}">${ball.finishOrder}. ${esc(ball.displayLabel || ball.name)}</span>
       `).join('');
     };
 
+    const fsBoardWrap = $('#fsPinballBoardWrap');
+    $('#btnFsPinballShake')?.addEventListener('click', () => pinballShakeBoard(fsEngine, fsBoardWrap));
+
     fsEngine.start({
+      onShake: () => {
+        fsBoardWrap?.classList.remove('is-shaking');
+        void fsBoardWrap?.offsetWidth;
+        fsBoardWrap?.classList.add('is-shaking');
+      },
+      onFrame: () => {
+        const status = $('#fsPinballStatus');
+        if (!status) return;
+        const leader = fsEngine.getRaceLeader();
+        if (fsEngine.cameraBlend > 0.4 && leader && !leader.finished) {
+          status.textContent = `🎬 1위 ${leader.displayLabel || leader.name} 추적 중…`;
+        } else if (fsEngine.cameraBlend > 0.15) {
+          status.textContent = '🎥 카메라가 선두 구슬에 맞춰집니다…';
+        }
+      },
       onFinishOrder: (_ball, order) => renderFsLeaderboard(order),
       onComplete: (order) => {
         const status = $('#fsPinballStatus');
@@ -1596,9 +1651,13 @@
     $('#btnPinballDeselectAll')?.addEventListener('click', () => pinballSelectAll(false));
     $('#btnPinballPoolReset')?.addEventListener('click', pinballResetPool);
     $('#btnPinballStart')?.addEventListener('click', startPinballRace);
+    $('#btnPinballShake')?.addEventListener('click', () => {
+      pinballShakeBoard(pinballEngine, document.querySelector('.pinball-board-wrap'));
+    });
     $('#btnPinballReset')?.addEventListener('click', () => {
       pinballEngine?.stop();
       pinballRunning = false;
+      document.querySelector('.pinball-board-wrap')?.classList.remove('is-shaking');
       resetPinballBoard();
     });
     $('#btnPinballFullscreen')?.addEventListener('click', openPinballFullscreen);

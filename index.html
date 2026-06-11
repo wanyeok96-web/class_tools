@@ -439,13 +439,14 @@
                   <canvas id="pinballCanvas" class="pinball-canvas" aria-label="핀볼 경주판"></canvas>
                 </div>
                 <p class="pinball-status" id="pinballStatus">시작 버튼을 누르면 구슬이 떨어집니다!</p>
-                <div class="pinball-leaderboard" id="pinballLeaderboard">
-                  <p class="pinball-leaderboard__empty">경주가 시작되면 순위가 표시됩니다</p>
-                </div>
-                <div class="form-row game-actions">
+                <div class="form-row game-actions pinball-actions">
                   <button type="button" class="btn btn-primary" id="btnPinballStart">🕹️ 핀볼 시작!</button>
+                  <button type="button" class="btn btn-secondary" id="btnPinballShake" disabled>📳 튕기기</button>
                   <button type="button" class="btn btn-secondary" id="btnPinballReset">다시 하기</button>
                   <button type="button" class="btn btn-secondary" id="btnPinballFullscreen">📺 전체화면</button>
+                </div>
+                <div class="pinball-leaderboard" id="pinballLeaderboard">
+                  <p class="pinball-leaderboard__empty">경주가 시작되면 도착 순서가 표시됩니다</p>
                 </div>
               </div>
             </div>
