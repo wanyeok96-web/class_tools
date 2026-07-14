@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="학급 운영을 위한 모든 도구를 한 곳에 — 자리배치, 모둠편성, 랜덤게임, 발표순서, 임원투표, 당번관리, 타이머" />
+    <title>Class Tools — 학급 운영 도구</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="print.css" />
+    <style>
+      body { color: #1c1c1e; margin: 0; }
+      #bootError { display: none; margin: 16px; padding: 16px; background: #fff3f3; border: 1px solid #ff3b30; border-radius: 12px; color: #c00; font-family: sans-serif; }
+      #bootError.is-visible { display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="bootError" role="alert"></div>
+    <div class="app-shell" id="appShell">
+      <header class="app-toolbar no-print" id="appToolbar">
+        <div class="app-toolbar__meta">
+          <div class="visitor-counter" aria-live="polite">
+            <span class="visitor-counter__badge">Today <strong id="todayCount">-</strong></span>
+            <span class="visitor-counter__badge">Total <strong id="totalCount">-</strong></span>
+          </div>
+          <p class="app-copyright" role="contentinfo">
+            ⓒ 2026 클래스툴 | 경기 이솔고등학교 교사 이왕혁 | <a href="mailto:wanyeok96@gmail.com">wanyeok96@gmail.com</a>
+          </p>
+        </div>
+        <div class="app-toolbar__inner">
+          <button type="button" class="btn-ghost btn-back" id="btnBack" hidden aria-label="뒤로">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <span class="app-toolbar__logo" id="toolbarLogo">Class Tools</span>
+          <div class="app-toolbar__actions">
+            <label class="header-class-field panel-class-field" id="panelClassField" hidden>
+              <select id="panelClassSelect" class="input input-select header-class-select" aria-label="학급 선택">
+                <option value="">학급을 등록해주세요</option>
+              </select>
+            </label>
+            <div class="app-toolbar__office">
+              <button type="button" class="btn-office card" id="btnOffice" aria-label="관리실">
+                <span class="btn-office__icon" aria-hidden="true">⚙️</span>
+                <span class="btn-office__label">관리실</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="home-landing" id="homeLanding">
+        <section class="hub-dashboard hub-mindmap" id="hubDashboard">
+          <div class="hub-canvas" id="hubCanvas">
+            <div class="hero-bg" aria-hidden="true">
+              <div class="hero-orb hero-orb--1"></div>
+              <div class="hero-orb hero-orb--2"></div>
+              <div class="hero-orb hero-orb--3"></div>
+            </div>
+            <div class="hub-orbit" id="hubOrbit">
+              <div class="hub-orbit__stage" id="hubOrbitStage">
+                <svg class="hub-spokes" id="hubSpokes" aria-hidden="true"></svg>
+                <div class="hub-hero hub-hero--open" id="hubHeroCard">
+                  <div class="hero" id="homeHero" aria-labelledby="heroTitle">
+                    <span class="hero-badge">학급 운영 도구</span>
+                    <h1 class="hero-title" id="heroTitle">
+                      <span class="hero-title__main">Class Tools</span>
+                    </h1>
+                    <p class="hero-desc">교실 운영에 필요한 모든 도구를 한 곳에서.</p>
+                    <p class="hero-welcome" id="heroWelcome"></p>
+                    <label class="hero-class-field">
+                      <span class="hero-class-label">학급 선택</span>
+                      <select id="heroClassSelect" class="input input-select hero-class-select" aria-label="학급 선택">
+                        <option value="">학급을 등록해주세요</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div class="hub-orbit__nodes" id="hubNodes" aria-label="기능 메뉴"></div>
+              </div>
+            </div>
+            <nav class="hub-mobile" id="hubMobile" aria-label="기능 메뉴" hidden></nav>
+        </div>
+        </section>
+      </div>
+
+      <!-- 기능 패널들 -->
+      <main class="panels no-print" id="panels" hidden>
+        <!-- 관리실 -->
+        <section class="panel" data-panel="office" hidden>
+          <div class="panel-head">
+            <h2>⚙️ 관리실</h2>
+            <p>학교·학급·학생 명단 관리, 데이터 백업 및 복원</p>
+          </div>
+          <div class="panel-grid">
+            <div class="card panel-card">
+              <h3>사용자 설정</h3>
+              <form id="userForm" class="form-row">
+                <label class="field">
+                  <span class="field-label">학교</span>
+                  <input type="text" id="userSchool" class="input" maxlength="60" placeholder="예: 이솔고등학교" />
+                </label>
+                <label class="field">
+                  <span class="field-label">이름</span>
+                  <input type="text" id="userName" class="input" maxlength="30" placeholder="예: 홍길동" />
+                </label>
+                <button type="submit" class="btn btn-primary">저장</button>
+              </form>
+            </div>
+
+            <div class="card panel-card panel-card--wide">
+              <h3>학급 관리</h3>
+              <p class="card-desc">여러 학급을 등록하고, 프로그램에서 사용할 학급을 선택합니다.</p>
+              <form id="classForm" class="form-grid">
+                <label class="field"><span class="field-label">학년</span><input type="number" id="newGrade" class="input" min="1" max="6" value="1" placeholder="예: 2" /></label>
+                <label class="field"><span class="field-label">반</span><input type="text" id="newClassLabel" class="input" maxlength="20" placeholder="예: 1, A, B" /></label>
+                <label class="field field-span-2"><span class="field-label">표시 이름 (선택)</span><input type="text" id="newClassName" class="input" placeholder="비우면 자동 생성 (예: 2학년 A)" /></label>
+                <button type="submit" class="btn btn-primary">학급 추가</button>
+              </form>
+              <h4 class="class-list-heading">학급 선택</h4>
+              <p class="field-hint class-list-hint">선택한 학급이 자리배치·추첨·당번 등 모든 기능에 적용됩니다.</p>
+              <div class="class-list" id="classList"></div>
+            </div>
+
+            <div class="card panel-card panel-card--wide">
+              <h3>학생 명단</h3>
+              <div class="student-toolbar">
+                <select id="studentClassSelect" class="input input-select"></select>
+                <button type="button" class="btn btn-secondary" id="btnExcelUpload">📄 엑셀 업로드</button>
+                <button type="button" class="btn btn-secondary" id="btnCsvUpload">📋 CSV 업로드</button>
+                <button type="button" class="btn btn-secondary" id="btnPasteStudents">📎 붙여넣기</button>
+                <button type="button" class="btn btn-secondary" id="btnAddStudent">+ 학생 추가</button>
+              </div>
+              <input type="file" id="excelFileInput" accept=".xlsx,.xls" hidden />
+              <input type="file" id="csvFileInput" accept=".csv,.txt" hidden />
+              <div class="student-table-wrap">
+                <table class="data-table" id="studentTable">
+                  <thead>
+                    <tr><th>학번</th><th>이름</th><th>성별</th><th>비고</th><th></th></tr>
+                  </thead>
+                  <tbody id="studentTableBody"></tbody>
+                </table>
+              </div>
+              <p class="field-hint">※ 엑셀에 학년·반·이름이 있으면 학번이 자동 생성됩니다. (예: 2학년 1반 1번 → 20101)<br>※ 생년월일, 주소, 전화번호 등 민감 정보는 저장하지 않습니다.</p>
+            </div>
+
+            <div class="card panel-card panel-card--wide">
+              <h3>📦 보물상자 보상 관리</h3>
+              <p class="card-desc">랜덤 게임 · 보물상자에서 뽑힐 보상 목록입니다. 자유롭게 추가·삭제하세요.</p>
+              <form id="treasureRewardForm" class="form-row">
+                <label class="field field-grow">
+                  <span class="field-label">보상 이름</span>
+                  <input type="text" id="newTreasureReward" class="input" maxlength="40" placeholder="예: 꽝, 사탕, 청소 면제권" />
+                </label>
+                <button type="submit" class="btn btn-primary">추가</button>
+              </form>
+              <ul class="treasure-reward-list" id="treasureRewardList"></ul>
+              <button type="button" class="btn btn-secondary btn-sm-inline" id="btnTreasureRewardsReset">기본 목록으로 초기화</button>
+            </div>
+
+            <div class="card panel-card">
+              <h3>데이터 관리</h3>
+              <div class="btn-group">
+                <button type="button" class="btn btn-secondary" id="btnExport">💾 백업 다운로드</button>
+                <button type="button" class="btn btn-secondary" id="btnImport">📂 백업 복원</button>
+                <input type="file" id="importFileInput" accept=".json" hidden />
+                <button type="button" class="btn btn-danger" id="btnReset">🗑️ 전체 초기화</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 자리배치 -->
+        <section class="panel" data-panel="seats" hidden>
+          <div class="panel-head">
+            <h2>🪑 자리배치</h2>
+            <p>교실 좌석 배치, 자동 배치, 드래그 앤 드롭</p>
+          </div>
+          <div class="seat-workspace">
+            <aside class="seat-sidebar-col">
+              <div class="card seat-sidebar seat-sidebar--classroom">
+                <h3>교실 설정</h3>
+                <div class="form-grid form-grid--compact">
+                  <label class="field"><span class="field-label">행</span><input type="number" id="seatRows" class="input" min="1" max="12" value="5" /></label>
+                  <label class="field"><span class="field-label">열</span><input type="number" id="seatCols" class="input" min="1" max="12" value="6" /></label>
+                  <label class="field field-span-2"><span class="field-label">교탁 위치</span>
+                    <select id="teacherPosition" class="input input-select">
+                      <option value="front">앞 (학생이 교탁을 봄)</option>
+                      <option value="back">뒤</option>
+                      <option value="left">왼쪽</option>
+                      <option value="right">오른쪽</option>
+                    </select>
+                  </label>
+                </div>
+                <button type="button" class="btn btn-secondary btn-block" id="btnCreateGrid">교실 생성</button>
+
+                <nav class="seat-assign-nav" id="seatAssignNav" role="tablist" aria-label="배치 방식">
+                  <button type="button" class="seat-assign-nav__btn is-active" data-assign-mode="auto" role="tab" aria-selected="true" id="seatAssignTabAuto">자동 배치</button>
+                  <button type="button" class="seat-assign-nav__btn" data-assign-mode="number" role="tab" aria-selected="false" id="seatAssignTabNumber">번호순 배치</button>
+                </nav>
+
+                <div class="seat-assign-panel is-active" id="seatAssignPanelAuto" data-assign-mode="auto" role="tabpanel" aria-labelledby="seatAssignTabAuto">
+                  <div class="checkbox-group">
+                    <label class="checkbox"><input type="checkbox" id="optRandom" checked /> 랜덤 배치</label>
+                    <label class="checkbox"><input type="checkbox" id="optGender" /> 성별 고려</label>
+                    <label class="checkbox"><input type="checkbox" id="optPrevious" /> 이전 자리 고려</label>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-block" id="btnOpenFrontRowRequests">🪑 앞자리 희망 학생</button>
+                  <button type="button" class="btn btn-secondary btn-block" id="btnOpenSeparation">🔒 분리 규칙 설정</button>
+                  <button type="button" class="btn btn-primary btn-block" id="btnAutoAssign">자동 배치 실행</button>
+                </div>
+
+                <div class="seat-assign-panel" id="seatAssignPanelNumber" data-assign-mode="number" role="tabpanel" aria-labelledby="seatAssignTabNumber" hidden>
+                  <div class="checkbox-group">
+                    <span class="field-label">번호순 방향</span>
+                    <label class="checkbox"><input type="radio" name="numberAssignDir" value="horizontal" checked /> 가로 (행 우선)</label>
+                    <label class="checkbox"><input type="radio" name="numberAssignDir" value="vertical" /> 세로 (열 우선)</label>
+                  </div>
+                  <button type="button" class="btn btn-primary btn-block" id="btnAssignByNumber">번호순 배치 실행</button>
+                </div>
+
+                <hr class="divider" />
+                <h3>미배치 학생</h3>
+                <div class="unassigned-pool" id="unassignedPool"></div>
+              </div>
+
+              <div class="card seat-sidebar seat-sidebar--print">
+                <h3>좌석표</h3>
+                <p class="card-desc seat-sidebar__desc">인쇄·미리보기에 표시할 학급 정보를 입력합니다.</p>
+                <label class="field"><span class="field-label">담임</span><input type="text" id="seatHomeroomTeacher" class="input" placeholder="담임 선생님" /></label>
+                <label class="field"><span class="field-label">반장</span><select id="seatClassPresident" class="input input-select"><option value="">선택</option></select></label>
+                <label class="field"><span class="field-label">부반장</span><select id="seatVicePresident" class="input input-select"><option value="">선택</option></select></label>
+                <label class="field field--notice"><span class="field-label">안내 문구</span><textarea id="seatPrintNotice" class="input input--notice" rows="3" placeholder="좌석표에 표시할 안내 문구">아이들이 자리를 임의로 바꿀 시 담임에게 꼭 이야기 해주세요~~~</textarea></label>
+                <p class="field-hint">자리 카드의 반장·부반장 버튼으로도 지정할 수 있습니다</p>
+                <hr class="divider divider--compact" />
+                <h3 class="seat-sidebar__subhead">출력</h3>
+                <button type="button" class="btn btn-secondary btn-block" id="btnViewTeacherSeats">👁️ 교탁 부착용 좌석표</button>
+                <button type="button" class="btn btn-secondary btn-block" id="btnViewBoardSeats">👁️ 칠판 부착용 좌석표</button>
+              </div>
+            </aside>
+            <div class="seat-main">
+              <div class="seat-context-bar" id="seatContextBar"></div>
+              <div class="seat-layout">
+                <div class="teacher-desk" id="teacherDesk">교탁</div>
+                <div class="seat-grid" id="seatGrid"></div>
+                <p class="seat-layout-hint">마우스로 학생을 끌어 좌석을 바꿀 수 있습니다.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 모둠편성 -->
+        <section class="panel" data-panel="groups" hidden>
+          <div class="panel-head">
+            <h2>👥 모둠편성</h2>
+            <p>모둠 크기·성별·분리 규칙을 고려한 자동 편성</p>
+          </div>
+          <div class="group-workspace">
+            <div class="card group-controls">
+              <div class="form-row">
+                <label class="field"><span class="field-label">모둠 크기</span>
+                  <select id="groupSize" class="input input-select">
+                    <option value="2">2인</option>
+                    <option value="3">3인</option>
+                    <option value="4" selected>4인</option>
+                    <option value="5">5인</option>
+                    <option value="6">6인</option>
+                  </select>
+                </label>
+                <label class="checkbox"><input type="checkbox" id="groupGender" checked /> 성별 고려</label>
+                <label class="checkbox"><input type="checkbox" id="groupSeparation" checked /> 분리 학생 고려</label>
+                <button type="button" class="btn btn-primary" id="btnFormGroups">모둠 편성</button>
+                <button type="button" class="btn btn-secondary" id="btnPrintGroups">🖨️ 모둠표 출력</button>
+              </div>
+            </div>
+            <div class="groups-result" id="groupsResult"></div>
+          </div>
+        </section>
+
+        <!-- 랜덤 게임 -->
+        <section class="panel" data-panel="random" hidden>
+          <div id="gamesLobby">
+            <div class="panel-head">
+              <h2>🎲 랜덤 게임</h2>
+              <p>사다리, 슬롯, 카드, 보물상자, 주사위, 룰렛, 핀볼, 스코어보드 — 학급 활동에 활용하세요</p>
+            </div>
+            <div class="games-grid" id="gamesGrid"></div>
+          </div>
+
+          <div id="gamesView" hidden>
+            <div class="game-view-nav">
+              <button type="button" class="btn-ghost btn-back-inline" id="btnGamesBack">← 게임 목록</button>
+              <h2 class="game-view-title" id="gamesViewTitle"></h2>
+            </div>
+
+            <div class="card game-common-options" id="gameCommonOptions">
+              <div class="form-row">
+                <label class="field"><span class="field-label">추첨 수</span><input type="number" id="gamePickCount" class="input" min="1" max="5" value="1" /></label>
+                <label class="checkbox"><input type="checkbox" id="gameNoDuplicate" checked /> 당첨 후 제외 (중복 금지)</label>
+              </div>
+            </div>
+
+            <!-- 사다리 -->
+            <div class="game-screen" id="gameScreenLadder" hidden>
+              <div class="card ladder-settings">
+                <div class="ladder-tabs" role="tablist" aria-label="사다리 설정">
+                  <button type="button" class="ladder-tab is-active" role="tab" aria-selected="true" data-ladder-tab="participants" id="ladderTabBtnParticipants">참가자</button>
+                  <button type="button" class="ladder-tab" role="tab" aria-selected="false" data-ladder-tab="winners" id="ladderTabBtnWinners">당첨 설정</button>
+                </div>
+                <div class="ladder-tab-panel" id="ladderTabParticipants" role="tabpanel">
+                  <p class="ladder-tab-desc">참가할 학생을 선택하세요 <span class="field-hint">오늘 수업 동안 유지</span></p>
+                  <div class="form-row">
+                    <button type="button" class="btn btn-secondary" id="btnLadderSelectAll">전원 선택</button>
+                    <button type="button" class="btn btn-secondary" id="btnLadderDeselectAll">전원 해제</button>
+                    <button type="button" class="btn btn-secondary" id="btnLadderPoolReset">초기화</button>
+                  </div>
+                  <div class="ladder-pool-grid" id="ladderPoolGrid"></div>
+                  <p class="ladder-pool-summary" id="ladderPoolSummary"></p>
+                </div>
+                <div class="ladder-tab-panel" id="ladderTabWinners" role="tabpanel" hidden>
+                  <p class="ladder-tab-desc">도착 지점에서 선정될 당첨자 수를 정하세요</p>
+                  <div class="form-row ladder-win-form">
+                    <label class="field">
+                      <span class="field-label">당첨자 수</span>
+                      <input type="number" id="ladderWinnerCount" class="input" min="1" max="5" value="1" />
+                    </label>
+                    <label class="checkbox"><input type="checkbox" id="ladderNoDuplicate" checked /> 당첨 후 참가자에서 제외</label>
+                  </div>
+                  <p class="field-hint" id="ladderWinnerHint">참가자 0명 · 당첨 1명</p>
+                </div>
+              </div>
+              <div class="card ladder-board-wrap">
+                <div class="form-row">
+                  <button type="button" class="btn btn-primary" id="btnLadderBuild">사다리 만들기</button>
+                  <button type="button" class="btn btn-primary" id="btnLadderStart" disabled>시작!</button>
+                  <button type="button" class="btn btn-secondary" id="btnLadderFullscreen">📺 전체화면</button>
+                </div>
+                <div class="ladder-board" id="ladderBoard"><p class="ladder-placeholder">사다리를 만든 후 시작하세요</p></div>
+              </div>
+            </div>
+
+            <!-- 슬롯 -->
+            <div class="game-screen" id="gameScreenSlot" hidden>
+              <div class="card game-stage game-stage--slot">
+                <div class="slot-machine" id="slotReel"></div>
+                <div class="form-row game-actions">
+                  <button type="button" class="btn btn-primary" id="btnSlotSpin">돌리기!</button>
+                  <button type="button" class="btn btn-secondary" id="btnSlotFullscreen">📺 전체화면</button>
+                </div>
+                <div class="game-result" id="slotResult"><p class="game-result__placeholder">돌리기 버튼을 눌러주세요</p></div>
+              </div>
+            </div>
+
+            <!-- 카드 -->
+            <div class="game-screen" id="gameScreenCard" hidden>
+              <div class="card game-stage">
+                <div class="form-row game-actions">
+                  <button type="button" class="btn btn-secondary" id="btnCardShuffle">다시 섞기</button>
+                </div>
+                <div class="card-fan" id="cardGameGrid"></div>
+                <div class="card-picked" id="cardPickedZone" aria-label="뽑은 카드"></div>
+                <div class="game-result" id="cardResult"><p class="game-result__placeholder">부채꼴에서 카드를 선택하세요</p></div>
+              </div>
+            </div>
+
+            <!-- 보물상자 -->
+            <div class="game-screen" id="gameScreenTreasure" hidden>
+              <div class="card game-stage game-stage--treasure">
+                <div class="treasure-event" id="treasureEvent">
+                  <div class="treasure-confetti" id="treasureConfetti" aria-hidden="true"></div>
+                  <div class="treasure-box" id="treasureBox">
+                    <span class="treasure-box__lid" aria-hidden="true"></span>
+                    <span class="treasure-box__icon">📦</span>
+                    <span class="treasure-box__label">보물상자</span>
+                  </div>
+                </div>
+                <div class="form-row game-actions">
+                  <button type="button" class="btn btn-primary btn-lg" id="btnTreasureOpen">✨ 보물상자 열기!</button>
+                  <button type="button" class="btn btn-secondary" id="btnTreasureFullscreen">📺 전체화면</button>
+                </div>
+                <div class="game-result treasure-result" id="treasureResult"><p class="game-result__placeholder">열기 버튼을 눌러주세요</p></div>
+              </div>
+            </div>
+
+            <!-- 주사위 -->
+            <div class="game-screen" id="gameScreenDice" hidden>
+              <div class="card game-stage game-stage--dice">
+                <p class="dice-rule">주사위를 굴려 보세요!</p>
+                <div class="form-row dice-settings">
+                  <label class="field">
+                    <span class="field-label">주사위 개수</span>
+                    <select id="diceCount" class="input input-select">
+                      <option value="1">1개</option>
+                      <option value="2" selected>2개</option>
+                      <option value="3">3개</option>
+                      <option value="4">4개</option>
+                      <option value="5">5개</option>
+                      <option value="6">6개</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="dice-stage" id="diceStage"></div>
+                <div class="dice-total" id="diceTotal" hidden>
+                  <span class="dice-total__label">합계</span>
+                  <span class="dice-total__value" id="diceTotalValue">2</span>
+                </div>
+                <div class="form-row game-actions">
+                  <button type="button" class="btn btn-primary btn-lg" id="btnDiceRoll">🎲 굴리기!</button>
+                  <button type="button" class="btn btn-secondary" id="btnDiceFullscreen">📺 전체화면</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 핀볼 -->
+            <div class="game-screen" id="gameScreenPinball" hidden>
+              <div class="card pinball-pool-panel">
+                <h3>참가자 선정 <span class="field-hint">오늘 수업 동안 유지</span></h3>
+                <div class="form-row">
+                  <button type="button" class="btn btn-secondary" id="btnPinballSelectAll">전원 선택</button>
+                  <button type="button" class="btn btn-secondary" id="btnPinballDeselectAll">전원 해제</button>
+                  <button type="button" class="btn btn-secondary" id="btnPinballPoolReset">초기화</button>
+                </div>
+                <div class="ladder-pool-grid" id="pinballPoolGrid"></div>
+                <p class="ladder-pool-summary" id="pinballPoolSummary"></p>
+              </div>
+              <div class="card pinball-settings">
+                <div class="form-row pinball-win-form">
+                  <label class="field">
+                    <span class="field-label">당첨자 수</span>
+                    <input type="number" id="pinballWinnerCount" class="input" min="1" max="5" value="1" />
+                  </label>
+                  <label class="checkbox"><input type="checkbox" id="pinballNoDuplicate" checked /> 당첨 후 참가자에서 제외</label>
+                </div>
+                <p class="field-hint" id="pinballWinnerHint">참가자 2명 이상 필요합니다</p>
+              </div>
+              <div class="card pinball-board-card">
+                <div class="pinball-board-wrap">
+                  <canvas id="pinballCanvas" class="pinball-canvas" aria-label="핀볼 경주판"></canvas>
+                </div>
+                <p class="pinball-status" id="pinballStatus">시작 버튼을 누르면 구슬이 떨어집니다!</p>
+                <div class="form-row game-actions pinball-actions">
+                  <button type="button" class="btn btn-primary" id="btnPinballStart">🕹️ 핀볼 시작!</button>
+                  <button type="button" class="btn btn-secondary" id="btnPinballShake" disabled>📳 튕기기</button>
+                  <button type="button" class="btn btn-secondary" id="btnPinballReset">다시 하기</button>
+                  <button type="button" class="btn btn-secondary" id="btnPinballFullscreen">📺 전체화면</button>
+                </div>
+                <div class="pinball-leaderboard" id="pinballLeaderboard">
+                  <p class="pinball-leaderboard__empty">경주가 시작되면 도착 순서가 표시됩니다</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 스코어보드 -->
+            <div class="game-screen" id="gameScreenScoreboard" hidden>
+              <div class="scoreboard-workspace" id="scoreboardWorkspace">
+                <div class="card scoreboard-settings" id="scoreboardSettings"></div>
+                <div class="scoreboard-grid" id="scoreboardGrid"></div>
+              </div>
+            </div>
+
+            <!-- 룰렛 -->
+            <div class="game-screen" id="gameScreenRoulette" hidden>
+              <div class="card roulette-settings">
+                <div class="ladder-tabs roulette-tabs" role="tablist" aria-label="룰렛 모드">
+                  <button type="button" class="ladder-tab is-active" role="tab" aria-selected="true" data-roulette-tab="students" id="rouletteTabBtnStudents">학생 뽑기</button>
+                  <button type="button" class="ladder-tab" role="tab" aria-selected="false" data-roulette-tab="custom" id="rouletteTabBtnCustom">직접 입력</button>
+                </div>
+                <div class="ladder-tab-panel" id="rouletteTabStudents" role="tabpanel">
+                  <p class="ladder-tab-desc">룰렛에 넣을 학생을 선택하세요 <span class="field-hint">오늘 수업 동안 유지</span></p>
+                  <div class="form-row">
+                    <button type="button" class="btn btn-secondary" id="btnRouletteSelectAll">전원 선택</button>
+                    <button type="button" class="btn btn-secondary" id="btnRouletteDeselectAll">전원 해제</button>
+                    <button type="button" class="btn btn-secondary" id="btnRoulettePoolReset">초기화</button>
+                  </div>
+                  <div class="ladder-pool-grid" id="roulettePoolGrid"></div>
+                  <p class="ladder-pool-summary" id="roulettePoolSummary"></p>
+                </div>
+                <div class="ladder-tab-panel" id="rouletteTabCustom" role="tabpanel" hidden>
+                  <p class="ladder-tab-desc">룰렛에 넣을 항목을 입력하세요 <span class="field-hint">오늘 수업 동안 유지</span></p>
+                  <form id="rouletteCustomForm" class="form-row">
+                    <label class="field field-grow">
+                      <span class="field-label">항목</span>
+                      <input type="text" id="rouletteCustomInput" class="input" maxlength="30" placeholder="예: 1번 문제, 청소 당번, 꽝" />
+                    </label>
+                    <button type="submit" class="btn btn-primary">추가</button>
+                  </form>
+                  <ul class="roulette-custom-list" id="rouletteCustomList"></ul>
+                  <p class="ladder-pool-summary" id="rouletteCustomSummary"></p>
+                  <button type="button" class="btn btn-secondary btn-sm-inline" id="btnRouletteCustomReset">예시 목록으로 초기화</button>
+                </div>
+              </div>
+              <div class="card roulette-board-card">
+                <div class="roulette-workspace">
+                  <div class="roulette-stage" id="rouletteStage">
+                    <div class="roulette-pointer" aria-hidden="true"></div>
+                    <div class="roulette-wheel-wrap">
+                      <div class="roulette-wheel" id="rouletteWheel" aria-live="polite"></div>
+                    </div>
+                    <div class="roulette-hub-cap" aria-hidden="true"></div>
+                  </div>
+                  <div class="roulette-side">
+                    <div class="form-row roulette-controls">
+                      <label class="checkbox"><input type="checkbox" id="rouletteNoDuplicate" checked /> 당첨 후 제외 (중복 금지)</label>
+                      <button type="button" class="btn btn-primary" id="btnSpinRoulette">룰렛 돌리기!</button>
+                      <button type="button" class="btn btn-secondary" id="btnRouletteReset">다시 채우기</button>
+                      <button type="button" class="btn btn-secondary" id="btnRouletteFullscreen">📺 전체화면</button>
+                    </div>
+                    <div class="roulette-winner" id="rouletteWinner">
+                      <p class="roulette-winner__placeholder">버튼을 눌러 룰렛을 돌려보세요</p>
+                    </div>
+                    <div class="roulette-history" id="rouletteHistory" hidden>
+                      <h4>당첨 기록</h4>
+                      <ol id="rouletteHistoryList"></ol>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 발표순서 -->
+        <section class="panel" data-panel="presentation" hidden>
+          <div class="panel-head">
+            <h2>📋 발표순서</h2>
+            <p>랜덤 생성 후 수동 수정 가능</p>
+          </div>
+          <div class="presentation-workspace">
+            <div class="card">
+              <div class="ladder-tabs presentation-tabs" role="tablist" aria-label="발표순서 모드">
+                <button type="button" class="ladder-tab is-active" role="tab" aria-selected="true" data-presentation-tab="class" id="presentationTabBtnClass">학급 전체</button>
+                <button type="button" class="ladder-tab" role="tab" aria-selected="false" data-presentation-tab="group" id="presentationTabBtnGroup">모둠별</button>
+              </div>
+              <div class="form-row presentation-actions">
+                <button type="button" class="btn btn-primary" id="btnGenPresentation">순서 생성</button>
+                <button type="button" class="btn btn-secondary" id="btnShufflePresentation">다시 섞기</button>
+                <button type="button" class="btn btn-secondary" id="btnPrintPresentation">🖨️ 출력</button>
+              </div>
+            </div>
+            <div class="card" id="presentationClassView">
+              <ol class="presentation-list sortable-list" id="presentationList"></ol>
+            </div>
+            <div class="card" id="presentationGroupView" hidden>
+              <div class="presentation-groups" id="presentationGroupList"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 임원투표 -->
+        <section class="panel" data-panel="officers" hidden>
+          <div class="panel-head">
+            <h2>🗳️ 임원투표</h2>
+            <p>반장·부반장 찬반·경합 투표 — 교탁에서 입력, 결과만 공개</p>
+          </div>
+          <div class="officers-workspace" id="officersWorkspace"></div>
+        </section>
+
+        <!-- 당번관리 -->
+        <section class="panel" data-panel="duties" hidden>
+          <div class="panel-head">
+            <h2>🧹 당번관리</h2>
+            <p>청소·급식·환경정리 등 역할 배정</p>
+          </div>
+          <div class="duties-workspace">
+            <div class="duty-tabs" id="dutyTabs"></div>
+            <div class="card duty-panel" id="dutyPanel"></div>
+          </div>
+        </section>
+
+        <!-- 타이머 -->
+        <section class="panel" data-panel="timer" hidden>
+          <div class="panel-head">
+            <h2>⏱️ 타이머</h2>
+            <p>카운트다운 타이머와 스톱워치</p>
+          </div>
+          <div class="timer-workspace card" id="timerWorkspace">
+            <div class="timer-mode-tabs" role="tablist" aria-label="타이머 모드">
+              <button type="button" class="timer-mode-tab is-active" role="tab" aria-selected="true" data-timer-mode="countdown" id="timerTabCountdown">타이머</button>
+              <button type="button" class="timer-mode-tab" role="tab" aria-selected="false" data-timer-mode="stopwatch" id="timerTabStopwatch">스톱워치</button>
+            </div>
+            <div class="timer-display" id="timerDisplay">05:00</div>
+            <div class="timer-panel" id="timerCountdownPanel">
+              <div class="form-row timer-controls">
+                <label class="field"><span class="field-label">분</span><input type="number" id="timerMinutes" class="input" min="0" max="120" value="5" /></label>
+                <label class="field"><span class="field-label">초</span><input type="number" id="timerSeconds" class="input" min="0" max="59" value="0" /></label>
+              </div>
+            </div>
+            <div class="timer-panel" id="timerStopwatchPanel" hidden>
+              <p class="timer-stopwatch-hint">시작 버튼을 누르면 00:00부터 측정합니다</p>
+            </div>
+            <div class="form-row timer-actions">
+              <button type="button" class="btn btn-primary" id="btnTimerStart">시작</button>
+              <button type="button" class="btn btn-secondary" id="btnTimerPause">일시정지</button>
+              <button type="button" class="btn btn-secondary" id="btnTimerReset">리셋</button>
+              <button type="button" class="btn btn-secondary" id="btnTimerFullscreen">📺 전체화면</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 서명·도장 -->
+        <section class="panel" data-panel="signature" hidden>
+          <div class="panel-head">
+            <h2>✍️ 서명·도장 만들기</h2>
+            <p>손글씨 싸인과 한글 도장을 만들어 투명 배경 PNG로 저장하세요</p>
+          </div>
+          <div class="signature-workspace card">
+            <div class="signature-mode-tabs" role="tablist" aria-label="서명·도장 모드">
+              <button type="button" class="signature-tab is-active" role="tab" aria-selected="true" data-signature-tab="draw" id="signatureTabBtnDraw">손글씨 싸인</button>
+              <button type="button" class="signature-tab" role="tab" aria-selected="false" data-signature-tab="stamp" id="signatureTabBtnStamp">한글 도장</button>
+            </div>
+
+            <div class="signature-tab-panel" id="signatureTabDraw" role="tabpanel">
+              <div class="signature-toolbar">
+                <label class="field signature-field">
+                  <span class="field-label">선 굵기</span>
+                  <input type="range" id="signatureStrokeWidth" min="1" max="8" value="3" />
+                </label>
+                <label class="field signature-field">
+                  <span class="field-label">선 색</span>
+                  <input type="color" id="signatureStrokeColor" value="#1a1a1a" />
+                </label>
+                <button type="button" class="btn btn-secondary btn-sm-inline" id="btnSignatureUndo">되돌리기</button>
+                <button type="button" class="btn btn-secondary btn-sm-inline" id="btnSignatureClear">전체 지우기</button>
+              </div>
+              <div class="signature-preview-wrap signature-preview-wrap--light" id="signatureDrawPreview">
+                <canvas id="signatureDrawCanvas" class="signature-draw-canvas" aria-label="싸인 그리기"></canvas>
+              </div>
+              <p class="field-hint">마우스나 터치로 싸인을 그린 뒤 PNG로 저장하세요. 배경은 투명합니다.</p>
+              <div class="signature-actions">
+                <div class="signature-preview-bgs" role="group" aria-label="미리보기 배경">
+                  <button type="button" class="signature-preview-bg is-active" data-preview-bg="light">밝은 배경</button>
+                  <button type="button" class="signature-preview-bg" data-preview-bg="dark">어두운 배경</button>
+                  <button type="button" class="signature-preview-bg" data-preview-bg="checker">투명</button>
+                </div>
+                <button type="button" class="btn btn-primary" id="btnSignatureDrawPng">PNG 저장</button>
+              </div>
+            </div>
+
+            <div class="signature-tab-panel" id="signatureTabStamp" role="tabpanel" hidden>
+              <div class="signature-stamp-form">
+                <label class="field signature-field-grow">
+                  <span class="field-label">도장 글자 (2~4자)</span>
+                  <input type="text" id="signatureStampText" class="input" lang="ko" maxlength="4" autocomplete="off" placeholder="예: 이왕혁 또는 홍길동" />
+                </label>
+                <label class="field">
+                  <span class="field-label">크기</span>
+                  <select id="signatureStampSize" class="input input-select">
+                    <option value="256">256px</option>
+                    <option value="512" selected>512px</option>
+                    <option value="1024">1024px</option>
+                  </select>
+                </label>
+                <label class="checkbox signature-checkbox">
+                  <input type="checkbox" id="signatureStampAppendIn" checked /> 끝에 「인」 붙이기
+                </label>
+                <label class="checkbox signature-checkbox">
+                  <input type="checkbox" id="signatureStampBorder" checked /> 원형 테두리
+                </label>
+              </div>
+              <div class="signature-stamp-colors" role="group" aria-label="도장 색상">
+                <button type="button" class="signature-color-chip is-active" data-color="#C41E3A" title="인주" style="--chip-color:#C41E3A">인주</button>
+                <button type="button" class="signature-color-chip" data-color="#1a1a1a" title="검정" style="--chip-color:#1a1a1a">검정</button>
+                <button type="button" class="signature-color-chip" data-color="#1e4d8c" title="청색" style="--chip-color:#1e4d8c">청색</button>
+                <button type="button" class="signature-color-chip" data-color="#b8860b" title="금색" style="--chip-color:#b8860b">금색</button>
+              </div>
+              <p class="field-hint" id="signatureStampHint">2~4자 한글을 입력하세요 (「인」 자동 추가 가능)</p>
+              <div class="signature-preview-wrap signature-preview-wrap--light signature-preview-wrap--stamp" id="signatureStampPreview">
+                <canvas id="signatureStampCanvas" class="signature-stamp-canvas" aria-label="도장 미리보기"></canvas>
+              </div>
+              <div class="signature-actions">
+                <div class="signature-preview-bgs" role="group" aria-label="미리보기 배경">
+                  <button type="button" class="signature-preview-bg is-active" data-preview-bg="light">밝은 배경</button>
+                  <button type="button" class="signature-preview-bg" data-preview-bg="dark">어두운 배경</button>
+                  <button type="button" class="signature-preview-bg" data-preview-bg="checker">투명</button>
+                </div>
+                <button type="button" class="btn btn-primary" id="btnSignatureStampPng">PNG 저장</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- 모달 -->
+    <div class="modal-backdrop" id="modalBackdrop" hidden aria-hidden="true">
+      <div class="modal card" role="dialog" aria-modal="true" id="modal">
+        <div class="modal-header">
+          <h3 id="modalTitle">알림</h3>
+          <button type="button" class="btn-icon-only" id="modalClose" aria-label="닫기">✕</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-footer" id="modalFooter"></div>
+      </div>
+    </div>
+
+    <!-- 전체화면 오버레이 -->
+    <div class="fullscreen-overlay" id="fullscreenOverlay" hidden aria-hidden="true">
+      <button type="button" class="btn-icon-only fullscreen-close" id="fullscreenClose" aria-label="닫기">✕</button>
+      <div class="fullscreen-content" id="fullscreenContent"></div>
+    </div>
+
+    <!-- 출력 영역 -->
+    <div class="print-only" id="printArea"></div>
+
+    <!-- 토스트 -->
+    <div class="toast" id="toast" hidden></div>
+
+    <script src="storage.js"></script>
+    <script src="xlsx-import.js"></script>
+    <script src="seat-manager.js"></script>
+    <script src="group-manager.js"></script>
+    <script src="random-manager.js"></script>
+    <script src="game-manager.js"></script>
+    <script src="pinball-engine.js"></script>
+    <script src="scoreboard-manager.js"></script>
+    <script src="games.js"></script>
+    <script src="officers-vote.js"></script>
+    <script src="signature-maker.js"></script>
+    <script src="script.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script defer src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  </body>
+</html>
