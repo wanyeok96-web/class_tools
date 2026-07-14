@@ -101,6 +101,7 @@
     const game = CT_GAMES.find((g) => g.id === gameId);
     if (!game) return;
 
+    sfx('click');
     currentGameId = gameId;
     $('#gamesLobby').hidden = true;
     $('#gamesView').hidden = false;
@@ -158,6 +159,28 @@
     return Math.max(1, Math.min(max, n));
   }
 
+  function getLadderWinLabel() {
+    const input = $('#ladderWinLabel');
+    const fromInput = String(input?.value ?? '').trim();
+    if (fromInput) return fromInput;
+    const classId = getClassId();
+    return typeof ctLoadLadderWinLabel === 'function'
+      ? ctLoadLadderWinLabel(classId)
+      : '당첨';
+  }
+
+  function formatLadderWinLabelShort(label) {
+    const text = String(label || '당첨').trim() || '당첨';
+    return text.length > 6 ? `${text.slice(0, 5)}…` : text;
+  }
+
+  function sfx(name, ...args) {
+    try {
+      window.CTGameSFX?.unlock?.();
+      window.CTGameSFX?.[name]?.(...args);
+    } catch { /* ignore */ }
+  }
+
   function resetLadderBoard() {
     ladderState.built = false;
     const board = $('#ladderBoard');
@@ -183,8 +206,9 @@
     if (!hint) return;
     const count = getLadderParticipants().length;
     const w = getLadderWinnerCount(count);
+    const label = getLadderWinLabel();
     hint.textContent = count
-      ? `참가자 ${count}명 · 당첨 ${w}명 (도착 칸 ${w}개가 선정)`
+      ? `참가자 ${count}명 · 「${label}」 ${w}칸`
       : '참가자를 먼저 선택해주세요.';
   }
 
@@ -206,6 +230,10 @@
         if (!current || current < 1) input.value = '1';
         else if (current > maxWin) input.value = String(maxWin);
       }
+    }
+    const labelInput = $('#ladderWinLabel');
+    if (labelInput && (resetValue || document.activeElement !== labelInput)) {
+      labelInput.value = ctLoadLadderWinLabel(classId);
     }
     updateLadderWinnerHint();
   }
@@ -312,10 +340,11 @@
       ));
     }
 
-    ladderState = { built: true, rungs, participants, winningBottoms, paths, layout };
+    ladderState = { built: true, rungs, participants, winningBottoms, paths, layout, winLabel: getLadderWinLabel() };
     drawLadderSvg(null);
     const btnStart = $('#btnLadderStart');
     if (btnStart) btnStart.disabled = false;
+    sfx('pop');
     toast('사다리가 준비되었습니다. 시작! 버튼을 눌러주세요.');
   }
 
@@ -325,6 +354,7 @@
 
     const { rungs, participants, winningBottoms, paths, layout } = ladderState;
     const { colW, rowH, padX, padTop, levels, n, w, h } = layout;
+    const winLabel = formatLadderWinLabelShort(ladderState.winLabel || getLadderWinLabel());
 
     let svg = `<svg class="ladder-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="사다리">`;
 
@@ -349,7 +379,7 @@
         ? participants[c].name.slice(0, 4) + '…'
         : participants[c].name;
       svg += `<text class="ladder-label ladder-label--top" x="${x}" y="18" text-anchor="middle">${esc(label)}</text>`;
-      const bottom = isWin ? '🎉 선정' : '—';
+      const bottom = isWin ? esc(winLabel) : '—';
       const cls = isWin ? 'ladder-label--win' : '';
       svg += `<text class="ladder-label ladder-label--bottom ${cls}" x="${x}" y="${padTop + rowH * levels + 30}" text-anchor="middle">${bottom}</text>`;
     }
@@ -386,8 +416,9 @@
       toast('당첨자가 없습니다.');
       return;
     }
+    const winLabel = ladderState.winLabel || getLadderWinLabel();
     const body = `
-      <p class="ladder-modal-intro">${winners.length}명이 선정되었습니다.</p>
+      <p class="ladder-modal-intro">${winners.length}명이 「${esc(winLabel)}」에 선정되었습니다.</p>
       <ul class="ladder-winner-list">
         ${winners.map((w, i) => `
           <li class="ladder-winner-row">
@@ -398,7 +429,7 @@
         `).join('')}
       </ul>`;
     const footer = '<button type="button" class="btn btn-primary" id="btnLadderModalClose">확인</button>';
-    host.showModal?.('🎉 사다리 당첨 결과', body, footer);
+    host.showModal?.(`🎉 ${winLabel} 결과`, body, footer);
     setTimeout(() => {
       $('#btnLadderModalClose')?.addEventListener('click', () => host.closeModal?.());
     }, 0);
@@ -417,6 +448,10 @@
     if (btnStart) btnStart.disabled = true;
     if (btnBuild) btnBuild.disabled = true;
 
+    sfx('whoosh');
+    const duration = Math.max(4500, Math.min(9500, ladderState.participants.length * 220));
+    sfx('loopTicks', duration, 200);
+
     drawLadderSvg(ladderState.participants.map(() => 0));
     await delay(200);
     await animateLadderPieces();
@@ -427,6 +462,7 @@
       ladderState.winningBottoms
     );
     drawLadderSvg(ladderState.participants.map(() => 1));
+    if (winners.length) sfx('win');
     await delay(350);
     showLadderWinnerModal(winners);
 
@@ -560,14 +596,19 @@
     resetSlotReveal();
     buildSlotReels(digits.length);
     if (result) result.innerHTML = '<p class="game-result__placeholder">학번 추첨 중…</p>';
+    sfx('whoosh');
 
     for (let i = 0; i < digits.length; i++) {
       const strip = $(`#slotReels .slot-strip[data-reel-idx="${i}"]`);
-      if (strip) await spinDigitReel(strip, digits[i]);
+      if (strip) {
+        sfx('tick', i);
+        await spinDigitReel(strip, digits[i]);
+      }
       if (i < digits.length - 1) await delay(SLOT_DIGIT_GAP_MS);
     }
 
     await delay(350);
+    sfx('win');
     await revealSlotWinner(winner);
     if (result) result.innerHTML = renderWinnerHtml(winners);
     slotSpinning = false;
@@ -748,6 +789,7 @@
     if (cardPickedOrder.length >= count) return;
 
     cardPickedOrder.push(id);
+    sfx('click');
     renderCardGrid();
     renderPickedZone(id);
     updateCardResultStatus();
@@ -757,11 +799,16 @@
     if (cardShuffling || !cardPickedOrder.includes(id) || cardFlipped.has(id)) return;
 
     cardFlipped.add(id);
+    sfx('flip');
     const btn = $('#cardPickedZone')?.querySelector(`.card-picked-slot[data-id="${CSS.escape(id)}"]`);
     btn?.classList.add('is-flipped');
     btn?.setAttribute('aria-label', btn.querySelector('.card-pick__name')?.textContent || '카드');
 
     updateCardResultStatus();
+    const count = getPickCount();
+    if (cardFlipped.size >= cardPickedOrder.length && cardPickedOrder.length >= count) {
+      sfx('win');
+    }
   }
 
   async function shuffleCards() {
@@ -770,6 +817,7 @@
     if (!students.length) return;
 
     cardShuffling = true;
+    sfx('whoosh');
     cardDeck = ctShuffleGroups([...students]);
     cardPickedOrder = [];
     cardFlipped = new Set();
@@ -788,6 +836,7 @@
     renderCardGrid();
     renderPickedZone();
     updateCardResultStatus();
+    sfx('pop');
     toast('카드를 다시 섞었습니다.');
   }
 
@@ -847,8 +896,10 @@
     if (btn) btn.disabled = true;
     if (result) result.innerHTML = '';
 
+    sfx('whoosh');
     resetTreasureBox();
     if (box) box.classList.add('is-shaking');
+    sfx('loopTicks', 850, 120);
     await delay(850);
     if (box) {
       box.classList.remove('is-shaking');
@@ -862,6 +913,7 @@
         <span class="treasure-box__prize-text">${esc(reward)}</span>`;
     }
 
+    sfx('win');
     launchConfetti(confetti);
     if (result) {
       result.innerHTML = `<div class="treasure-prize-card">${esc(reward)}</div>`;
@@ -919,12 +971,14 @@
     if (totalWrap) totalWrap.hidden = true;
     rollers.forEach((el) => el.classList.remove('is-landed'));
 
+    sfx('dice');
     const finals = rollers.map(() => 1 + Math.floor(Math.random() * 6));
     rollers.forEach((el) => el.classList.add('is-rolling'));
 
     let ticks = 0;
     while (ticks < 18) {
       rollers.forEach((el) => setDiceFace(el, 1 + Math.floor(Math.random() * 6)));
+      if (ticks % 3 === 0) sfx('tick', ticks);
       await delay(60 + ticks * 10);
       ticks++;
     }
@@ -935,6 +989,7 @@
       el.classList.add('is-landed');
     });
 
+    sfx('pop');
     await delay(200);
     const sum = finals.reduce((acc, v) => acc + v, 0);
     if (totalVal) totalVal.textContent = String(sum);
@@ -1302,11 +1357,13 @@
     const boardWrap = document.querySelector('.pinball-board-wrap');
     if (status) status.textContent = '⚡ 회전 장애물을 뚫고 골인까지!';
 
+    sfx('whoosh');
     pinballEngine.setup(participants, winCount);
     renderPinballLeaderboard([]);
 
     pinballEngine.start({
       onShake: () => {
+        sfx('bounce');
         boardWrap?.classList.remove('is-shaking');
         void boardWrap?.offsetWidth;
         boardWrap?.classList.add('is-shaking');
@@ -1328,6 +1385,7 @@
       },
       onFinishOrder: (_ball, order) => {
         renderPinballLeaderboard(order);
+        sfx('pop');
         if (status && order.length === 1) {
           status.textContent = '🏁 1위 결정! 나머지 구슬도 골인할 때까지…';
         } else if (status) {
@@ -1340,6 +1398,7 @@
         setPinballShakeEnabled(false);
         boardWrap?.classList.remove('is-shaking');
         if (status) status.textContent = '경주 완료!';
+        sfx('win');
 
         if ($('#pinballNoDuplicate')?.checked && classId) {
           order.slice(0, winCount).forEach((b) => pinballExcluded.add(b.id));
@@ -1511,6 +1570,8 @@
         const delta = scoreBtn.dataset.scoreAction === 'plus' ? scoreboardData.step : -scoreboardData.step;
         scoreboardData = ctAdjustTeamScore(scoreboardData, idx, delta);
         ctSaveScoreboard(scoreboardData);
+        if (delta > 0) sfx('scoreUp');
+        else sfx('scoreDown');
         bumpScoreDisplay(idx);
         return;
       }
@@ -1619,6 +1680,18 @@
       }
       updateLadderWinnerHint();
     });
+    const saveWinLabel = () => {
+      const classId = getClassId();
+      const label = getLadderWinLabel();
+      ctSaveLadderWinLabel(classId, label);
+      const input = $('#ladderWinLabel');
+      if (input) input.value = label;
+      updateLadderWinnerHint();
+      resetLadderBoard();
+    };
+    $('#ladderWinLabel')?.addEventListener('change', saveWinLabel);
+    $('#ladderWinLabel')?.addEventListener('blur', saveWinLabel);
+    $('#ladderWinLabel')?.addEventListener('input', updateLadderWinnerHint);
 
     $('#btnLadderSelectAll')?.addEventListener('click', () => ladderSelectAll(true));
     $('#btnLadderDeselectAll')?.addEventListener('click', () => {

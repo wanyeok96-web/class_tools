@@ -1975,6 +1975,12 @@ textarea.input {
 .ladder-win-form {
   align-items: flex-end;
   flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.ladder-win-form .field--grow {
+  flex: 1 1 160px;
+  min-width: 140px;
 }
 
 .ladder-pool-item__badge {

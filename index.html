@@ -318,11 +318,15 @@
                   <p class="ladder-pool-summary" id="ladderPoolSummary"></p>
                 </div>
                 <div class="ladder-tab-panel" id="ladderTabWinners" role="tabpanel" hidden>
-                  <p class="ladder-tab-desc">도착 지점에서 선정될 당첨자 수를 정하세요</p>
+                  <p class="ladder-tab-desc">도착 지점 당첨 칸 수와 표시 문구를 정하세요</p>
                   <div class="form-row ladder-win-form">
                     <label class="field">
                       <span class="field-label">당첨자 수</span>
                       <input type="number" id="ladderWinnerCount" class="input" min="1" max="5" value="1" />
+                    </label>
+                    <label class="field field--grow">
+                      <span class="field-label">당첨 문구</span>
+                      <input type="text" id="ladderWinLabel" class="input" maxlength="12" value="당첨" placeholder="당첨" />
                     </label>
                     <label class="checkbox"><input type="checkbox" id="ladderNoDuplicate" checked /> 당첨 후 참가자에서 제외</label>
                   </div>
@@ -711,6 +715,7 @@
     <script src="group-manager.js"></script>
     <script src="random-manager.js"></script>
     <script src="game-manager.js"></script>
+    <script src="game-sounds.js"></script>
     <script src="pinball-engine.js"></script>
     <script src="scoreboard-manager.js"></script>
     <script src="games.js"></script>

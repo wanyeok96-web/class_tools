@@ -4,6 +4,8 @@
 
 const CT_LADDER_POOL_PREFIX = 'ct-ladder-pool:';
 const CT_LADDER_WIN_COUNT_PREFIX = 'ct-ladder-win-count:';
+const CT_LADDER_WIN_LABEL_PREFIX = 'ct-ladder-win-label:';
+const CT_DEFAULT_LADDER_WIN_LABEL = '당첨';
 const CT_ROULETTE_POOL_PREFIX = 'ct-roulette-pool:';
 const CT_ROULETTE_MODE_PREFIX = 'ct-roulette-mode:';
 const CT_ROULETTE_CUSTOM_PREFIX = 'ct-roulette-custom:';
@@ -92,6 +94,30 @@ function ctSaveLadderWinCount(classId, count) {
   if (!classId) return;
   try {
     sessionStorage.setItem(ctLadderWinCountKey(classId), String(count));
+  } catch { /* ignore */ }
+}
+
+function ctLadderWinLabelKey(classId) {
+  return `${CT_LADDER_WIN_LABEL_PREFIX}${classId}`;
+}
+
+function ctLoadLadderWinLabel(classId) {
+  if (!classId) return CT_DEFAULT_LADDER_WIN_LABEL;
+  try {
+    const raw = sessionStorage.getItem(ctLadderWinLabelKey(classId));
+    if (raw == null) return CT_DEFAULT_LADDER_WIN_LABEL;
+    const trimmed = String(raw).trim();
+    return trimmed || CT_DEFAULT_LADDER_WIN_LABEL;
+  } catch {
+    return CT_DEFAULT_LADDER_WIN_LABEL;
+  }
+}
+
+function ctSaveLadderWinLabel(classId, label) {
+  if (!classId) return;
+  try {
+    const trimmed = String(label ?? '').trim() || CT_DEFAULT_LADDER_WIN_LABEL;
+    sessionStorage.setItem(ctLadderWinLabelKey(classId), trimmed);
   } catch { /* ignore */ }
 }
 
@@ -390,6 +416,9 @@ if (typeof module !== 'undefined') {
     ctGetLadderPieceMeta,
     ctLoadLadderWinCount,
     ctSaveLadderWinCount,
+    CT_DEFAULT_LADDER_WIN_LABEL,
+    ctLoadLadderWinLabel,
+    ctSaveLadderWinLabel,
     ctPickWinningBottomSlots,
     ctBuildLadderPathPoints,
     ctInterpolatePath,

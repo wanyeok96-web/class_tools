@@ -2112,6 +2112,12 @@
     if (spinBtn) spinBtn.disabled = true;
     if (fsSpinBtn) fsSpinBtn.disabled = true;
 
+    try {
+      window.CTGameSFX?.unlock?.();
+      window.CTGameSFX?.whoosh?.();
+      window.CTGameSFX?.loopTicks?.(4200, 160);
+    } catch { /* ignore */ }
+
     wheels.forEach((wheel) => {
       wheel.classList.add('is-spinning');
       requestAnimationFrame(() => {
@@ -2124,6 +2130,8 @@
       modeState.rotation = targetRotation;
       rouletteSpinning = false;
       wheels.forEach((wheel) => wheel.classList.remove('is-spinning'));
+
+      try { window.CTGameSFX?.win?.(); } catch { /* ignore */ }
 
       if ($('#rouletteNoDuplicate')?.checked) {
         modeState.excluded.add(winner.id);
