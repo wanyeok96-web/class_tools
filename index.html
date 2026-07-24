@@ -599,7 +599,7 @@
             <div class="convert-toolbar">
               <button type="button" class="btn btn-secondary btn-sm-inline" id="btnConvertRecheck">엔진 다시 준비</button>
               <p class="field-hint convert-hint">
-                여러 파일을 한 번에 올릴 수 있습니다. 성공한 파일은 아래에서 선택한 방식으로 저장됩니다.
+                파일을 올리면 목록에 추가됩니다. <strong>변환하기</strong>를 누르면 변환이 시작됩니다.
               </p>
             </div>
             <div class="convert-download-mode" role="radiogroup" aria-label="저장 방식">
@@ -622,7 +622,8 @@
             <p class="convert-summary" id="convertSummary" hidden></p>
             <div id="convertFileList" class="convert-file-list" hidden></div>
             <div class="convert-actions">
-              <button type="button" class="btn btn-primary" id="btnConvertZip" hidden>ZIP 다시 받기</button>
+              <button type="button" class="btn btn-primary" id="btnConvertStart" hidden>변환하기</button>
+              <button type="button" class="btn btn-secondary" id="btnConvertZip" hidden>ZIP 다시 받기</button>
               <button type="button" class="btn btn-secondary" id="btnConvertRetry" hidden>실패분 재시도</button>
               <button type="button" class="btn btn-secondary" id="btnConvertClear" hidden>목록 비우기</button>
             </div>

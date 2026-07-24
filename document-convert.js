@@ -77,8 +77,6 @@
   let batchSeq = 0;
   /** @type {number|null} */
   let activeBatchId = null;
-  /** @type {{ name: string, sourceBytes: Uint8Array|null, error?: string }[]} */
-  let queuedPrepared = [];
   /** @type {'zip'|'pdf'} */
   let downloadMode = loadDownloadMode();
 
@@ -449,7 +447,7 @@
       setStatus(
         'ok',
         '변환 준비 완료',
-        '브라우저 변환이 기본입니다. 한글 엔진이 연결되어 있으면 해당 파일은 더 정밀하게 처리됩니다.'
+        '파일을 목록에 올린 뒤 <strong>변환하기</strong>를 눌러 주세요. 한글 엔진이 연결되어 있으면 더 정밀하게 처리됩니다.'
       );
       return;
     }
@@ -457,7 +455,7 @@
     setStatus(
       'ok',
       '변환 준비 완료',
-      '브라우저에서 바로 변환합니다. 파일은 이 기기 밖으로 나가지 않습니다.'
+      '파일을 목록에 올린 뒤 <strong>변환하기</strong>를 눌러 주세요. 파일은 이 기기 밖으로 나가지 않습니다.'
     );
   }
 
@@ -837,16 +835,24 @@
   }
 
   function updateActions() {
+    const btnStart = $('#btnConvertStart');
     const btnSave = $('#btnConvertZip');
     const btnRetry = $('#btnConvertRetry');
     const btnClear = $('#btnConvertClear');
+    const pendingCount = jobs.filter((j) => j.status === 'pending' && j.sourceBytes).length;
     const successCount = jobs.filter((j) => j.status === 'success' && j.pdfBytes).length;
     const failCount = jobs.filter((j) => j.status === 'failed').length;
 
+    if (btnStart) {
+      btnStart.hidden = pendingCount === 0 && !converting;
+      btnStart.disabled = converting || pendingCount === 0;
+      btnStart.textContent =
+        converting ? '변환 중…' : pendingCount > 0 ? `변환하기 (${pendingCount})` : '변환하기';
+      btnStart.classList.toggle('is-emphasis', pendingCount > 0 && !converting);
+    }
     if (btnSave) {
       btnSave.hidden = successCount === 0;
       btnSave.disabled = converting;
-      btnSave.classList.toggle('is-emphasis', successCount > 0 && !converting);
       btnSave.textContent = downloadMode === 'pdf' ? 'PDF 다시 받기' : 'ZIP 다시 받기';
     }
     if (btnRetry) {
@@ -872,7 +878,12 @@
           : `변환 중… (${done}/${batch.length})`;
       } else {
         summary.hidden = false;
-        summary.textContent = `성공 ${successCount} · 실패 ${failCount} · 전체 ${jobs.length}`;
+        const parts = [];
+        if (pendingCount) parts.push(`대기 ${pendingCount}`);
+        if (successCount) parts.push(`성공 ${successCount}`);
+        if (failCount) parts.push(`실패 ${failCount}`);
+        parts.push(`전체 ${jobs.length}`);
+        summary.textContent = parts.join(' · ');
       }
     }
   }
@@ -898,17 +909,16 @@
     const prepared = await prepareFiles(fileList);
     if (!prepared.length) return;
 
-    if (converting) {
-      queuedPrepared.push(...prepared);
-      window.ctShowToast?.(`변환 진행 중 — ${prepared.length}개 파일을 대기열에 넣었습니다.`);
-      return;
-    }
-
-    enqueueAndStart(prepared);
+    enqueueFiles(prepared);
+    window.ctShowToast?.(
+      converting
+        ? `${prepared.length}개 파일을 목록에 추가했습니다. 진행 중이 끝나면 변환하기를 눌러 주세요.`
+        : `${prepared.length}개 파일을 목록에 추가했습니다. 변환하기를 눌러 주세요.`
+    );
   }
 
-  function enqueueAndStart(preparedList) {
-    const batchId = ++batchSeq;
+  /** 목록에만 추가 — 변환은 시작하지 않음 */
+  function enqueueFiles(preparedList) {
     for (const item of preparedList) {
       if (!item.sourceBytes) {
         jobs.push({
@@ -917,7 +927,7 @@
           sourceBytes: null,
           status: 'failed',
           error: item.error || '파일을 읽을 수 없습니다.',
-          batchId,
+          batchId: null,
         });
         continue;
       }
@@ -926,10 +936,24 @@
         name: item.name,
         sourceBytes: item.sourceBytes,
         status: 'pending',
-        batchId,
+        batchId: null,
       });
     }
     renderList();
+  }
+
+  /** 대기 중인 파일만 모아 변환 시작 */
+  function startPendingConversion() {
+    if (converting) return;
+    const targets = jobs.filter((j) => j.status === 'pending' && j.sourceBytes);
+    if (!targets.length) {
+      window.ctShowToast?.('변환할 파일이 없습니다. 먼저 파일을 올려 주세요.');
+      return;
+    }
+    const batchId = ++batchSeq;
+    for (const job of targets) {
+      job.batchId = batchId;
+    }
     startBatch(batchId);
   }
 
@@ -960,7 +984,6 @@
     const targets = jobs.filter((j) => j.batchId === batchId && j.status === 'pending');
     if (!targets.length) {
       await finishBatch(batchId);
-      drainQueue();
       return;
     }
 
@@ -985,7 +1008,6 @@
       converting = false;
       activeBatchId = null;
       renderList();
-      drainQueue();
       return;
     }
 
@@ -998,7 +1020,6 @@
     killWorker();
     renderList();
     await finishBatch(batchId);
-    drainQueue();
   }
 
   async function finishBatch(batchId) {
@@ -1037,12 +1058,15 @@
       setStatus('err', '변환 실패', '성공한 파일이 없습니다. 오류 메시지를 확인하세요.');
       window.ctShowToast?.('변환에 성공한 파일이 없습니다.');
     }
-  }
 
-  function drainQueue() {
-    if (converting || !queuedPrepared.length) return;
-    const next = queuedPrepared.splice(0, queuedPrepared.length);
-    enqueueAndStart(next);
+    const stillPending = jobs.filter((j) => j.status === 'pending' && j.sourceBytes).length;
+    if (stillPending) {
+      setStatus(
+        'ok',
+        successes.length || fails.length ? '이어서 변환할 수 있습니다' : '변환 준비 완료',
+        `대기 중인 파일 ${stillPending}개가 있습니다. <strong>변환하기</strong>를 눌러 주세요.`
+      );
+    }
   }
 
   function uniquePdfNames(successJobs) {
@@ -1121,6 +1145,10 @@
       if (files?.length) addFiles(files);
     });
 
+    $('#btnConvertStart')?.addEventListener('click', () => {
+      startPendingConversion();
+    });
+
     $('#btnConvertZip')?.addEventListener('click', async () => {
       const successes = jobs.filter((j) => j.status === 'success' && j.pdfBytes);
       if (!successes.length) return;
@@ -1141,27 +1169,25 @@
         window.ctShowToast?.('다시 변환하려면 파일을 다시 올려 주세요. (원본이 해제된 항목)');
         return;
       }
-      const batchId = ++batchSeq;
       for (const j of failed) {
         j.status = 'pending';
         j.error = undefined;
         j.pdfBytes = undefined;
-        j.batchId = batchId;
+        j.batchId = null;
       }
       renderList();
-      startBatch(batchId);
+      startPendingConversion();
     });
 
     $('#btnConvertClear')?.addEventListener('click', () => {
       if (converting) return;
       jobs = [];
-      queuedPrepared = [];
       killWorker();
       renderList();
       setStatus(
         'ok',
-        '준비 완료 — 바로 변환할 수 있습니다',
-        'hwp / hwpx 파일을 올리거나 끌어다 놓으세요.'
+        '변환 준비 완료',
+        'hwp / hwpx 파일을 올린 뒤 <strong>변환하기</strong>를 눌러 주세요.'
       );
     });
 
