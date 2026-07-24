@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light" />
-    <meta name="description" content="학급 운영을 위한 모든 도구를 한 곳에 — 자리배치, 모둠편성, 랜덤게임, 발표순서, 임원투표, 당번관리, 타이머" />
+    <meta name="description" content="학급 운영을 위한 모든 도구를 한 곳에 — 자리배치, 모둠편성, 랜덤게임, 발표순서, 임원투표, 당번관리, 타이머, 문서변환" />
     <title>Class Tools — 학급 운영 도구</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <link rel="stylesheet" href="style.css" />
@@ -50,37 +50,21 @@
       </header>
 
       <div class="home-landing" id="homeLanding">
-        <section class="hub-dashboard hub-mindmap" id="hubDashboard">
-          <div class="hub-canvas" id="hubCanvas">
-            <div class="hero-bg" aria-hidden="true">
-              <div class="hero-orb hero-orb--1"></div>
-              <div class="hero-orb hero-orb--2"></div>
-              <div class="hero-orb hero-orb--3"></div>
+        <section class="hub-dashboard hub-grid-home hub-desk-clean" id="hubDashboard">
+          <header class="hub-home-bar" id="homeHero">
+            <div class="hub-home-brand">
+              <h1 class="hub-home-title" id="heroTitle">Class Tools</h1>
+              <p class="hub-home-sub">선생님을 위한 학급 운영 도구</p>
+              <p class="hub-home-welcome" id="heroWelcome"></p>
             </div>
-            <div class="hub-orbit" id="hubOrbit">
-              <div class="hub-orbit__stage" id="hubOrbitStage">
-                <svg class="hub-spokes" id="hubSpokes" aria-hidden="true"></svg>
-                <div class="hub-hero hub-hero--open" id="hubHeroCard">
-                  <div class="hero" id="homeHero" aria-labelledby="heroTitle">
-                    <span class="hero-badge">학급 운영 도구</span>
-                    <h1 class="hero-title" id="heroTitle">
-                      <span class="hero-title__main">Class Tools</span>
-                    </h1>
-                    <p class="hero-desc">교실 운영에 필요한 모든 도구를 한 곳에서.</p>
-                    <p class="hero-welcome" id="heroWelcome"></p>
-                    <label class="hero-class-field">
-                      <span class="hero-class-label">학급 선택</span>
-                      <select id="heroClassSelect" class="input input-select hero-class-select" aria-label="학급 선택">
-                        <option value="">학급을 등록해주세요</option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
-                <div class="hub-orbit__nodes" id="hubNodes" aria-label="기능 메뉴"></div>
-              </div>
-            </div>
-            <nav class="hub-mobile" id="hubMobile" aria-label="기능 메뉴" hidden></nav>
-        </div>
+            <label class="hub-home-class">
+              <span class="hub-home-class-label">학급</span>
+              <select id="heroClassSelect" class="input input-select hub-home-class-select" aria-label="학급 선택">
+                <option value="">학급을 등록해주세요</option>
+              </select>
+            </label>
+          </header>
+          <nav class="hub-tile-grid" id="hubNodes" aria-label="기능 메뉴"></nav>
         </section>
       </div>
 
@@ -601,6 +585,50 @@
           </div>
         </section>
 
+        <!-- 문서변환 -->
+        <section class="panel" data-panel="convert" hidden>
+          <div class="panel-head">
+            <h2>📄 문서변환</h2>
+            <p>한글 파일(hwp, hwpx)을 PDF로 변환합니다. 브라우저에서 바로 처리되며, 파일은 외부로 전송되지 않습니다.</p>
+          </div>
+          <div class="card panel-card panel-card--wide convert-workspace">
+            <div class="convert-status convert-status--warn" id="convertStatus" role="status">
+              <strong>변환 엔진 준비 중…</strong>
+              <span>엔진·폰트를 불러오는 중…</span>
+            </div>
+            <div class="convert-toolbar">
+              <button type="button" class="btn btn-secondary btn-sm-inline" id="btnConvertRecheck">엔진 다시 준비</button>
+              <p class="field-hint convert-hint">
+                여러 파일을 한 번에 올릴 수 있습니다. 성공한 파일은 아래에서 선택한 방식으로 저장됩니다.
+              </p>
+            </div>
+            <div class="convert-download-mode" role="radiogroup" aria-label="저장 방식">
+              <span class="convert-download-mode__label">저장 방식</span>
+              <label class="convert-download-mode__option">
+                <input type="radio" name="convertDownloadMode" value="zip" checked />
+                ZIP으로 묶기
+              </label>
+              <label class="convert-download-mode__option">
+                <input type="radio" name="convertDownloadMode" value="pdf" />
+                PDF 각각 저장
+              </label>
+            </div>
+            <div class="convert-dropzone" id="convertDropzone" tabindex="0" role="button" aria-label="한글 파일 선택 또는 끌어다 놓기">
+              <p class="convert-dropzone__title">파일을 여기에 놓거나 클릭해서 선택</p>
+              <p class="convert-dropzone__sub">.hwp · .hwpx · 여러 개 가능</p>
+              <button type="button" class="btn btn-primary" id="btnConvertPick">파일 선택</button>
+            </div>
+            <input type="file" id="convertFileInput" accept=".hwp,.hwpx,application/haansofthwp,application/haansofthwpx" multiple hidden />
+            <p class="convert-summary" id="convertSummary" hidden></p>
+            <div id="convertFileList" class="convert-file-list" hidden></div>
+            <div class="convert-actions">
+              <button type="button" class="btn btn-primary" id="btnConvertZip" hidden>ZIP 다시 받기</button>
+              <button type="button" class="btn btn-secondary" id="btnConvertRetry" hidden>실패분 재시도</button>
+              <button type="button" class="btn btn-secondary" id="btnConvertClear" hidden>목록 비우기</button>
+            </div>
+          </div>
+        </section>
+
         <!-- 서명·도장 -->
         <section class="panel" data-panel="signature" hidden>
           <div class="panel-head">
@@ -721,6 +749,8 @@
     <script src="games.js"></script>
     <script src="officers-vote.js"></script>
     <script src="signature-maker.js"></script>
+    <script src="vendor/rhwptopdf/rhwptopdf.umd.js"></script>
+    <script src="document-convert.js"></script>
     <script src="script.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>

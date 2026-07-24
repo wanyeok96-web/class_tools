@@ -1,0 +1,6 @@
+converter/.venv/
+converter/__pycache__/
+tmp/
+*.pyc
+.DS_Store
+Thumbs.db

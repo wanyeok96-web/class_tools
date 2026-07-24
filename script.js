@@ -8,7 +8,7 @@
   const VISITOR_API_URL =
     'https://script.google.com/macros/s/AKfycbzkoq_3DyvPsX05x1YX2qTy2eNWKLt5fP_6fPBOIIJtZWrL2d6cyPW3kLP9eiPdvWQm/exec?action=visit';
 
-  /** 시계 방향(상단부터): 자리배치 → 모둠 → 랜덤 → 발표 → 임원 → 당번 → 타이머 → 서명 */
+  /** 메인 타일 (동일 계층 그리드) */
   const HUB_ITEMS = [
     { id: 'seats', icon: '🪑', label: '자리배치', color: '#7c3aed' },
     { id: 'groups', icon: '👥', label: '모둠편성', color: '#16a34a' },
@@ -18,18 +18,7 @@
     { id: 'duties', icon: '🧹', label: '당번관리', color: '#ea580c' },
     { id: 'timer', icon: '⏱️', label: '타이머', color: '#0d9488' },
     { id: 'signature', icon: '✍️', label: '서명·도장', color: '#ca8a04' },
-  ];
-
-  const HUB_ORBIT = {
-    startAngle: -90,
-    ringRadiusPct: 42,
-  };
-
-  const HUB_NODE_ENTER_ORDER = [4, 1, 6, 2, 0, 5, 3, 7];
-  const HUB_NODE_SCATTER = [
-    { x: -10, y: 8 }, { x: 14, y: 6 }, { x: -6, y: 12 },
-    { x: 8, y: 4 }, { x: -12, y: 10 }, { x: 6, y: 14 }, { x: -8, y: 5 },
-    { x: 10, y: 9 },
+    { id: 'convert', icon: '📄', label: '문서변환', color: '#475569' },
   ];
 
   const $ = (sel, ctx = document) => ctx.querySelector(sel);
@@ -112,23 +101,19 @@
     refreshHeader();
   }
 
-  /* ── 허브 대시보드 ── */
-  function createHubSatelliteCard(item, index) {
+  /* ── 허브 타일 그리드 ── */
+  function createHubTile(item, index) {
     const el = document.createElement('button');
     el.type = 'button';
-    el.className = 'hub-satellite-card';
+    el.className = 'hub-tile';
     el.style.setProperty('--hub-i', index);
     el.style.setProperty('--accent', item.color);
+    el.style.setProperty('--hub-enter-delay', `${(0.08 + index * 0.045).toFixed(2)}s`);
     el.dataset.panel = item.id;
-    el.dataset.hubAngle = String(hubOrbitAngle(index));
-    el.style.setProperty('--hub-enter-delay', `${hubNodeEnterDelay(index).toFixed(2)}s`);
-    const scatter = HUB_NODE_SCATTER[index % HUB_NODE_SCATTER.length];
-    el.style.setProperty('--scatter-ox', `${scatter.x}px`);
-    el.style.setProperty('--scatter-oy', `${scatter.y}px`);
     el.setAttribute('aria-label', item.label);
     el.innerHTML = `
-      <span class="hub-satellite-card__icon">${item.icon}</span>
-      <span class="hub-satellite-card__title">${item.label}</span>`;
+      <span class="hub-tile__icon" aria-hidden="true">${item.icon}</span>
+      <span class="hub-tile__title">${item.label}</span>`;
     return el;
   }
 
@@ -138,210 +123,20 @@
     node.classList.add('is-pulse');
   }
 
-  function hubOrbitAngle(index) {
-    return HUB_ORBIT.startAngle + index * (360 / HUB_ITEMS.length);
-  }
-
-  function hubNodeEnterDelay(index) {
-    const order = HUB_NODE_ENTER_ORDER.indexOf(index);
-    const rank = order < 0 ? index : order;
-    return 0.55 + rank * 0.1 + (index % 2) * 0.05;
-  }
-
-  function layoutHubOrbit() {
-    const stage = $('#hubOrbitStage');
-    if (!stage || window.matchMedia('(max-width: 768px)').matches) return;
-    const rect = stage.getBoundingClientRect();
-    if (rect.width < 10) return;
-    stage.style.removeProperty('--hub-fan-cy');
-    const radius = Math.min(rect.width, rect.height) * (HUB_ORBIT.ringRadiusPct / 100);
-    $$('#hubNodes .hub-satellite-card').forEach((card) => {
-      const angleDeg = parseFloat(card.dataset.hubAngle || '0');
-      const rad = (angleDeg * Math.PI) / 180;
-      card.style.setProperty('--orbit-ox', `${(radius * Math.cos(rad)).toFixed(2)}px`);
-      card.style.setProperty('--orbit-oy', `${(radius * Math.sin(rad)).toFixed(2)}px`);
-    });
-  }
-
-  function renderHubOrbitNodes(container) {
-    if (!container) return;
-    container.innerHTML = '';
-    HUB_ITEMS.forEach((item, i) => {
-      container.appendChild(createHubSatelliteCard(item, i));
-    });
-  }
-
-  function renderHubMobile(container) {
-    if (!container) return;
-    container.innerHTML = '';
-    HUB_ITEMS.forEach((item, i) => {
-      container.appendChild(createHubSatelliteCard(item, i));
-    });
-  }
-
   function renderHub(onReady) {
-    const isMobile = window.matchMedia('(max-width: 768px)').matches;
-    const mobile = $('#hubMobile');
     const nodes = $('#hubNodes');
-
-    renderHubOrbitNodes(nodes);
-
-    if (isMobile) {
-      mobile?.removeAttribute('hidden');
-      renderHubMobile(mobile);
-      $('#hubSpokes')?.replaceChildren();
+    if (!nodes) {
       onReady?.();
       return;
     }
-
-    mobile?.setAttribute('hidden', '');
-    $('#hubSpokes')?.replaceChildren();
-    bindHubOrbitInteractions();
-    requestAnimationFrame(() => {
-      layoutHubOrbit();
-      drawHubSpokes();
-      if ($('#hubDashboard')?.classList.contains('hub-enter-done')) {
-        $$('.hub-satellite-card').forEach((c) => { c.style.opacity = '1'; });
-      }
-      onReady?.();
+    nodes.innerHTML = '';
+    HUB_ITEMS.forEach((item, i) => {
+      nodes.appendChild(createHubTile(item, i));
     });
-  }
-
-  function hubStageCenter(stageRect) {
-    return { cx: stageRect.width / 2, cy: stageRect.height / 2 };
-  }
-
-  function hubCardAnchorTowardHero(card, stageRect, hcx, hcy) {
-    const r = card.getBoundingClientRect();
-    const mx = r.left + r.width / 2 - stageRect.left;
-    const my = r.top + r.height / 2 - stageRect.top;
-    const dx = mx - hcx;
-    const dy = my - hcy;
-    const dist = Math.hypot(dx, dy) || 1;
-    const nx = dx / dist;
-    const ny = dy / dist;
-    const inset = Math.min(r.width, r.height) * 0.38;
-    return { x: mx - nx * inset, y: my - ny * inset };
-  }
-
-  /** 히어로 텍스트 영역 밖에서 연결선이 끝나도록 내부 정지점 계산 */
-  function hubSpokeInnerEnd(stageRect, center, start) {
-    const hero = $('#hubHeroCard');
-    const margin = 10;
-    let halfW = stageRect.width * 0.24;
-    let halfH = stageRect.height * 0.2;
-    if (hero) {
-      const hr = hero.getBoundingClientRect();
-      halfW = hr.width / 2 + margin;
-      halfH = hr.height / 2 + margin;
+    if ($('#hubDashboard')?.classList.contains('hub-enter-done')) {
+      $$('.hub-tile').forEach((c) => { c.style.opacity = '1'; });
     }
-    const dx = start.x - center.cx;
-    const dy = start.y - center.cy;
-    const dist = Math.hypot(dx, dy) || 1;
-    const ux = dx / dist;
-    const uy = dy / dist;
-    const tX = Math.abs(ux) > 0.02 ? halfW / Math.abs(ux) : Infinity;
-    const tY = Math.abs(uy) > 0.02 ? halfH / Math.abs(uy) : Infinity;
-    const inner = Math.min(tX, tY, dist - 8);
-    return {
-      x: center.cx + ux * inner,
-      y: center.cy + uy * inner,
-    };
-  }
-
-  function drawHubSpokes() {
-    const svg = $('#hubSpokes');
-    const stage = $('#hubOrbitStage');
-    if (!svg || !stage) return;
-    if (window.matchMedia('(max-width: 768px)').matches) {
-      svg.replaceChildren();
-      return;
-    }
-    const rect = stage.getBoundingClientRect();
-    if (rect.width < 10) return;
-
-    const NS = 'http://www.w3.org/2000/svg';
-    const center = hubStageCenter(rect);
-    svg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
-    svg.replaceChildren();
-
-    const defs = document.createElementNS(NS, 'defs');
-    svg.appendChild(defs);
-
-    $$('#hubNodes .hub-satellite-card').forEach((card, i) => {
-      const item = HUB_ITEMS[i];
-      if (!item) return;
-      const start = hubCardAnchorTowardHero(card, rect, center.cx, center.cy);
-      const inner = hubSpokeInnerEnd(rect, center, start);
-      const len = Math.hypot(inner.x - start.x, inner.y - start.y);
-
-      const gradId = `hub-spoke-grad-${item.id}`;
-      const grad = document.createElementNS(NS, 'linearGradient');
-      grad.setAttribute('id', gradId);
-      grad.setAttribute('gradientUnits', 'userSpaceOnUse');
-      grad.setAttribute('x1', String(inner.x));
-      grad.setAttribute('y1', String(inner.y));
-      grad.setAttribute('x2', String(start.x));
-      grad.setAttribute('y2', String(start.y));
-      [
-        ['0%', 'rgba(0, 122, 255, 0.38)'],
-        ['50%', 'rgba(88, 86, 214, 0.32)'],
-        ['100%', item.color, '0.58'],
-      ].forEach(([offset, color, opacity]) => {
-        const stop = document.createElementNS(NS, 'stop');
-        stop.setAttribute('offset', offset);
-        stop.setAttribute('stop-color', color);
-        if (opacity) stop.setAttribute('stop-opacity', opacity);
-        grad.appendChild(stop);
-      });
-      defs.appendChild(grad);
-
-      const path = document.createElementNS(NS, 'line');
-      path.setAttribute('x1', start.x.toFixed(1));
-      path.setAttribute('y1', start.y.toFixed(1));
-      path.setAttribute('x2', inner.x.toFixed(1));
-      path.setAttribute('y2', inner.y.toFixed(1));
-      path.setAttribute('stroke', `url(#${gradId})`);
-      path.setAttribute('stroke-width', '1.6');
-      path.setAttribute('stroke-linecap', 'round');
-      path.classList.add('hub-spoke-path');
-      path.dataset.node = item.id;
-      path.style.setProperty('--spoke-len', String(len));
-      path.style.setProperty('--spoke-delay', `${Math.max(0.38, hubNodeEnterDelay(i) - 0.14).toFixed(2)}s`);
-      path.style.setProperty('--flow-color', item.color);
-      svg.appendChild(path);
-    });
-
-    const active = stage.getAttribute('data-active-node');
-    if (active) highlightHubSpoke(active);
-  }
-
-  function highlightHubSpoke(nodeId) {
-    $$('#hubSpokes .hub-spoke-path').forEach((el) => {
-      el.classList.toggle('is-active', !!(nodeId && el.dataset.node === nodeId));
-    });
-    $$('.hub-satellite-card').forEach((card) => {
-      card.classList.toggle('is-active', !!(nodeId && card.dataset.panel === nodeId));
-    });
-    const stage = $('#hubOrbitStage');
-    if (stage) {
-      if (nodeId) stage.setAttribute('data-active-node', nodeId);
-      else stage.removeAttribute('data-active-node');
-    }
-  }
-
-  function bindHubOrbitInteractions() {
-    if (bindHubOrbitInteractions.bound) return;
-    bindHubOrbitInteractions.bound = true;
-    const nodes = $('#hubNodes');
-    if (!nodes) return;
-    nodes.addEventListener('mouseover', (e) => {
-      const card = e.target.closest('.hub-satellite-card');
-      if (card?.dataset.panel) highlightHubSpoke(card.dataset.panel);
-    });
-    nodes.addEventListener('mouseleave', (e) => {
-      if (!e.relatedTarget?.closest?.('.hub-satellite-card')) highlightHubSpoke(null);
-    });
+    onReady?.();
   }
 
   function renderHeroWelcome() {
@@ -359,17 +154,6 @@
     hero.classList.add('hero-animate-in');
   }
 
-  function playHomeEnterAnimation() {
-    playHeroEnterAnimation();
-    playHubEnterAnimation();
-  }
-
-  function setToolbarMode(isPanel) {
-    $('#appToolbar')?.classList.toggle('is-panel-mode', isPanel);
-    const panelField = $('#panelClassField');
-    if (panelField) panelField.hidden = !isPanel;
-  }
-
   function playHubEnterAnimation() {
     const hub = $('#hubDashboard');
     if (!hub) return;
@@ -380,7 +164,18 @@
     playHubEnterAnimation._doneT = setTimeout(() => {
       hub.classList.add('hub-enter-done');
       hub.classList.remove('hub-animate-in');
-    }, 2100);
+    }, 900);
+  }
+
+  function playHomeEnterAnimation() {
+    playHeroEnterAnimation();
+    playHubEnterAnimation();
+  }
+
+  function setToolbarMode(isPanel) {
+    $('#appToolbar')?.classList.toggle('is-panel-mode', isPanel);
+    const panelField = $('#panelClassField');
+    if (panelField) panelField.hidden = !isPanel;
   }
 
   function runPanelRenderer(panelId) {
@@ -398,6 +193,7 @@
       duties: renderDuties,
       timer: () => {},
       signature: () => window.CTSignature?.init(),
+      convert: () => window.CTConvert?.init(),
     };
     renderers[panelId]?.();
   }
@@ -2989,10 +2785,8 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
 
   /* ── 이벤트 바인딩 ── */
   function bindEvents() {
-    bindHubOrbitInteractions();
-
-    document.getElementById('hubCanvas')?.addEventListener('click', (e) => {
-      const node = e.target.closest('.hub-satellite-card[data-panel]');
+    document.getElementById('hubNodes')?.addEventListener('click', (e) => {
+      const node = e.target.closest('.hub-tile[data-panel]');
       if (!node?.dataset.panel) return;
       pulseHubNode(node);
       openPanel(node.dataset.panel);
@@ -3006,7 +2800,7 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
     $('#heroClassSelect')?.addEventListener('change', onClassSelectChange);
     $('#panelClassSelect')?.addEventListener('change', onClassSelectChange);
     window.addEventListener('resize', () => {
-      if (!currentPanel) renderHub();
+      /* tile grid is CSS-driven; no orbit relayout */
     });
 
     $('#treasureRewardForm')?.addEventListener('submit', (e) => {
@@ -3442,7 +3236,7 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
   }
 
   window.addEventListener('error', (e) => {
-    if (!document.querySelector('#hubOrbit, #hubMobile .hub-satellite-card')) {
+    if (!document.querySelector('#hubNodes .hub-tile')) {
       showBootError(e.message || '스크립트 오류');
     }
   });
