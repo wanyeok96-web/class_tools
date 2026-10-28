@@ -31,27 +31,80 @@
   let presentationSortables = [];
   let presentationMode = 'class';
   let presentationViewActive = false;
-  let timerInterval = null;
-  let timerRemaining = 300;
-  let timerMode = 'countdown';
-  let stopwatchElapsed = 0;
-  let timerRunning = false;
-  let timerPausedMidRun = false;
-  let activeDutyType = 'cleaning';
-  const DUTY_PRINT_TYPES = ['cleaning', 'meal', 'environment'];
   let seatContext = { classId: null };
   let seatAutoAssignToken = 0;
   let seatRevealBusy = false;
   let seatAudioCtx = null;
-  let rouletteMode = 'students';
-  let rouletteSpinning = false;
-  const rouletteState = {
-    students: { excluded: new Set(), history: [], rotation: 0 },
-    custom: { excluded: new Set(), history: [], rotation: 0 },
-  };
   let isNavigating = false;
   const NAV_HUB_MS = 320;
   const NAV_PANEL_MS = 280;
+
+  /* ── 기능별 모듈 연결 (seat-rules-panel.js · duties-panel.js · random-panel.js · timer-panel.js · print-output.js) ── */
+  const app = {
+    get state() { return state; },
+    get seatRevealBusy() { return seatRevealBusy; },
+    get presentationMode() { return presentationMode; },
+    get presentationViewActive() { return presentationViewActive; },
+    closeModal,
+    ensureSeatMeta,
+    esc,
+    getActiveStudents,
+    getClassDisplayLabel,
+    getSeatClass,
+    getStudentName,
+    getUserSchool,
+    saveAndRefresh,
+    showModal,
+    showToast,
+  };
+  const seatRulesPanel = ctCreateSeatRulesPanel(app);
+  const dutiesPanel = ctCreateDutiesPanel(app);
+  const randomPanel = ctCreateRandomPanel(app);
+  const timerPanel = ctCreateTimerPanel(app);
+  const printOutput = ctCreatePrintOutput(app);
+  Object.assign(app, seatRulesPanel, dutiesPanel, randomPanel, timerPanel, printOutput);
+  const {
+    ensureSeatRules,
+    getActiveSeatRules,
+    syncSeatRules,
+    seatRuleNameOf,
+    updateSeatRulesButton,
+    updateSeatConfirmHint,
+    confirmCurrentSeats,
+    setSeatRuleAlert,
+    clearSeatRuleAlert,
+    resetSeatRuleAlert,
+    getSeatRuleAlert,
+    renderSeatRuleAlert,
+    seatViolationReport,
+    openSeatRulesModal,
+  } = seatRulesPanel;
+  const {
+    renderDuties,
+  } = dutiesPanel;
+  const {
+    spinRoulette,
+    resetRoulette,
+    openRouletteFullscreen,
+    renderGamesPanel,
+    initGamesModule,
+  } = randomPanel;
+  const {
+    formatTime,
+    getTimerDisplayValue,
+    getTimerMode,
+    pauseTimer,
+    switchTimerMode,
+    startTimer,
+    resetTimer,
+  } = timerPanel;
+  const {
+    openTeacherSeatPreview,
+    openBoardSeatPreview,
+    openSeatEnlargeFullscreen,
+    printGroups,
+    printPresentation,
+  } = printOutput;
 
   /* ── 유틸 ── */
   function showToast(msg) {
@@ -289,6 +342,7 @@
         landing.classList.add('is-returning');
         renderHub(playHomeEnterAnimation);
         renderHeroWelcome();
+        renderBackupReminder();
         setTimeout(() => landing.classList.remove('is-returning'), 500);
       }
       setToolbarMode(false);
@@ -372,6 +426,112 @@
     renderStudentClassSelect();
     renderStudentTable();
     renderTreasureRewards();
+    renderDataStatus();
+  }
+
+  function formatDateTime(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function renderDataStatus() {
+    const status = $('#backupStatus');
+    if (status) {
+      const { lastBackupAt } = ctGetBackupMeta();
+      status.textContent = lastBackupAt
+        ? `마지막 백업: ${formatDateTime(lastBackupAt)} (이 브라우저 기준)`
+        : '이 브라우저에서 백업한 기록이 없습니다.';
+    }
+    const undo = ctGetUndo();
+    const box = $('#undoBox');
+    if (box) {
+      box.hidden = !undo;
+      if (undo) {
+        const what = undo.reason === 'reset' ? '전체 초기화' : '백업 복원';
+        $('#undoText').textContent = `${formatDateTime(undo.at)} ${what} 직전 데이터(학급 ${undo.summary.classes}개 · 학생 ${undo.summary.students}명)로 되돌릴 수 있습니다.`;
+      }
+    }
+    renderBackupReminder();
+  }
+
+  function renderBackupReminder() {
+    const el = $('#backupReminder');
+    if (!el) return;
+    const reminder = ctBackupReminder(state);
+    el.hidden = !reminder;
+    if (!reminder) return;
+    $('#backupReminderText').textContent = reminder.never
+      ? '💡 아직 백업한 적이 없습니다. 브라우저 기록을 지우거나 PC를 바꾸면 학급 데이터가 사라질 수 있어요.'
+      : `💡 마지막 백업 후 ${reminder.days}일이 지났습니다. 학급 데이터를 백업해 두세요.`;
+  }
+
+  function reloadStateFromStorage() {
+    state = ctLoadState();
+    ensureActiveClass();
+    seatContext = { classId: state.activeClassId };
+    renderOffice();
+    refreshHeader();
+    renderHeroWelcome();
+  }
+
+  function confirmImportBackup(data, summary) {
+    const current = ctSummarizeState(state);
+    const when = summary.exportedAt ? ` (${formatDateTime(summary.exportedAt)} 백업)` : '';
+    showModal(
+      '📂 백업 복원',
+      `<p>백업 파일${esc(when)}: <strong>학급 ${summary.classes}개 · 학생 ${summary.students}명</strong></p>
+       <p>현재 데이터(학급 ${current.classes}개 · 학생 ${current.students}명)를 이 백업으로 바꿉니다.</p>
+       <p class="field-hint">복원 직전 데이터는 관리실의 '되돌리기'로 한 번 되살릴 수 있습니다.</p>`,
+      `<button type="button" class="btn btn-secondary" id="modalImportCancel">취소</button>
+       <button type="button" class="btn btn-primary" id="modalImportOk">복원</button>`
+    );
+    $('#modalImportCancel').onclick = closeModal;
+    $('#modalImportOk').onclick = () => {
+      const undoSaved = ctApplyBackup(data);
+      closeModal();
+      reloadStateFromStorage();
+      showToast(undoSaved ? '데이터가 복원되었습니다.' : '복원했습니다. (저장 공간이 부족해 되돌리기는 준비하지 못했습니다)');
+    };
+  }
+
+  function confirmResetAll() {
+    const current = ctSummarizeState(state);
+    showModal(
+      '🗑️ 전체 초기화',
+      `<p>학급 ${current.classes}개 · 학생 ${current.students}명의 데이터를 모두 지웁니다.</p>
+       <p class="field-hint">초기화 직전 데이터는 관리실의 '되돌리기'로 한 번 되살릴 수 있습니다. 확실히 보관하려면 먼저 백업을 받아 두세요.</p>`,
+      `<button type="button" class="btn btn-secondary" id="modalResetCancel">취소</button>
+       <button type="button" class="btn btn-danger" id="modalResetOk">초기화</button>`
+    );
+    $('#modalResetCancel').onclick = closeModal;
+    $('#modalResetOk').onclick = () => {
+      const undoSaved = ctResetAll();
+      closeModal();
+      reloadStateFromStorage();
+      showToast(undoSaved ? '초기화되었습니다.' : '초기화했습니다. (저장 공간이 부족해 되돌리기는 준비하지 못했습니다)');
+    };
+  }
+
+  function confirmUndoData() {
+    const undo = ctGetUndo();
+    if (!undo) return;
+    const current = ctSummarizeState(state);
+    showModal(
+      '↩️ 되돌리기',
+      `<p>${esc(formatDateTime(undo.at))} 직전 데이터(학급 ${undo.summary.classes}개 · 학생 ${undo.summary.students}명)로 되돌립니다.</p>
+       <p class="field-hint">지금 데이터(학급 ${current.classes}개 · 학생 ${current.students}명)는 사라집니다.</p>`,
+      `<button type="button" class="btn btn-secondary" id="modalUndoCancel">취소</button>
+       <button type="button" class="btn btn-primary" id="modalUndoOk">되돌리기</button>`
+    );
+    $('#modalUndoCancel').onclick = closeModal;
+    $('#modalUndoOk').onclick = () => {
+      ctRestoreUndo();
+      closeModal();
+      reloadStateFromStorage();
+      showToast('이전 데이터로 되돌렸습니다.');
+    };
   }
 
   function renderTreasureRewards() {
@@ -925,7 +1085,7 @@
           e.stopPropagation();
           if (seatRevealBusy) return;
           cls.seatLayout = ctToggleEmptySeat(layout, seat.key);
-          seatRuleAlert = null;
+          resetSeatRuleAlert();
           saveAndRefresh();
           renderSeats();
         });
@@ -999,674 +1159,9 @@
     });
 
     cls.seatLayout = layout;
-    seatRuleAlert = null;
+    resetSeatRuleAlert();
     saveAndRefresh();
     renderSeats();
-  }
-
-  /* ── 자리 규칙 ── */
-  const SEAT_RULE_TABS = [
-    { id: 'all', label: '전체' },
-    { id: 'position', label: '위치' },
-    { id: 'relation', label: '관계' },
-    { id: 'change', label: '변화' },
-  ];
-  const SEAT_RULE_PICKER = [
-    { type: 'rowRange', preset: 'frontRow', icon: '🪑', label: '앞자리 배치', desc: '교탁 쪽 맨 앞줄에 배치 (기존 앞자리 희망)' },
-    ...Object.keys(CT_SEAT_RULE_TYPES).map((type) => ({ type, ...CT_SEAT_RULE_TYPES[type] })),
-  ];
-  let seatRulesUi = { tab: 'all', pickerOpen: false, expanded: new Set(), report: '' };
-  /** 자동 배치 후 지키지 못한 규칙 — { classId, violations } */
-  let seatRuleAlert = null;
-
-  function escAttr(str) {
-    return esc(str).replace(/"/g, '&quot;');
-  }
-
-  function ensureSeatRules(cls) {
-    if (!Array.isArray(cls.seatRules)) cls.seatRules = [];
-    return cls.seatRules;
-  }
-
-  function getActiveSeatRules(cls) {
-    return ensureSeatRules(cls).filter(ctIsSeatRuleActive);
-  }
-
-  /** 명단에서 빠진 학생을 규칙에서 정리 (대상이 사라진 규칙은 꺼짐) */
-  function syncSeatRules(cls) {
-    const ids = new Set((cls.students || []).map((s) => s.id));
-    cls.seatRules = ensureSeatRules(cls).map((r) => ctNormalizeSeatRule(r, ids)).filter(Boolean);
-    return cls.seatRules;
-  }
-
-  function getSeatRuleStudents(cls) {
-    return [...(cls.students || [])].sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
-  }
-
-  function seatRuleNameOf(cls) {
-    const byId = new Map((cls.students || []).map((s) => [s.id, s]));
-    return (id) => {
-      const s = byId.get(id);
-      return s ? `${s.number}. ${s.name}` : getStudentName(id);
-    };
-  }
-
-  function persistSeatRules(cls) {
-    ctSaveState(state);
-    updateSeatRulesButton(cls);
-  }
-
-  function updateSeatRulesButton(cls) {
-    const btn = $('#btnOpenSeatRules');
-    if (!btn) return;
-    const review = cls ? ensureSeatRules(cls).some((r) => r.needsReview) : false;
-    btn.textContent = `⚙️ 규칙 설정${review ? ' ⚠️' : ''}`;
-    btn.title = review ? '교실 변경으로 확인이 필요한 규칙이 있습니다' : '';
-  }
-
-  function formatSeatConfirmDate(iso) {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  }
-
-  function updateSeatConfirmHint(cls) {
-    const el = $('#seatConfirmHint');
-    if (!el) return;
-    const c = cls?.seatConfirmed;
-    el.textContent = c ? `마지막 확정 ${formatSeatConfirmDate(c.at)}` : '확정 기록 없음';
-    el.title = c ? `${c.seats.length}명 배치를 지난 자리로 기억하고 있습니다` : '';
-  }
-
-  function confirmCurrentSeats() {
-    const cls = getSeatClass();
-    if (!cls?.seatLayout) return;
-    if (seatRevealBusy) {
-      showToast('자리 배치 연출이 진행 중입니다.');
-      return;
-    }
-    const count = ctCountAssignedInLayout(cls.seatLayout);
-    if (!count) {
-      showToast('배치된 학생이 없습니다.');
-      return;
-    }
-    const overwrite = cls.seatConfirmed
-      ? `<br />이전 확정(${formatSeatConfirmDate(cls.seatConfirmed.at)})은 덮어씁니다.`
-      : '';
-    showModal(
-      '📌 이번 자리 확정',
-      `<p>현재 배치(${count}명)를 '지난 자리'로 기억합니다.${overwrite}</p>
-       <p class="field-hint">규칙 설정의 '지난 자리 피하기'는 확정한 배치를 기준으로 동작합니다.</p>`,
-      `<button type="button" class="btn btn-secondary" id="modalConfirmSeatsCancel">취소</button>
-       <button type="button" class="btn btn-primary" id="modalConfirmSeatsOk">확정</button>`
-    );
-    $('#modalConfirmSeatsCancel').onclick = closeModal;
-    $('#modalConfirmSeatsOk').onclick = () => {
-      cls.seatConfirmed = ctCreateSeatSnapshot(cls.seatLayout);
-      ctSaveState(state);
-      updateSeatConfirmHint(cls);
-      closeModal();
-      showToast(`이번 자리를 확정했습니다. (${count}명)`);
-    };
-  }
-
-  function setSeatRuleAlert(cls, violations) {
-    seatRuleAlert = violations?.length ? { classId: cls.id, violations } : null;
-    renderSeatRuleAlert(cls);
-  }
-
-  function clearSeatRuleAlert() {
-    seatRuleAlert = null;
-    renderSeatRuleAlert(getSeatClass());
-  }
-
-  function renderSeatRuleAlert(cls) {
-    const el = $('#seatRuleAlert');
-    if (!el) return;
-    $$('.seat-cell--violation').forEach((c) => c.classList.remove('seat-cell--violation'));
-    const active = !!(seatRuleAlert && cls && seatRuleAlert.classId === cls.id);
-    el.hidden = !active;
-    if (!active) {
-      el.innerHTML = '';
-      return;
-    }
-    el.innerHTML = `
-      <span class="seat-rule-alert__text">⚠️ 규칙 위반 ${seatRuleAlert.violations.length}건이 있습니다. 빨간 좌석을 확인하세요.</span>
-      <button type="button" class="btn btn-secondary seat-rule-alert__btn" data-act="detail">자세히</button>
-      <button type="button" class="btn-icon-only seat-rule-alert__close" data-act="close" aria-label="알림 닫기">✕</button>`;
-    const keys = new Set(seatRuleAlert.violations.flatMap((v) => v.seatKeys));
-    keys.forEach((key) => {
-      $(`.seat-cell[data-seat-key="${key}"]`)?.classList.add('seat-cell--violation');
-    });
-  }
-
-  function renderSeatRuleReport(title, items) {
-    return `
-      <h4 class="seat-rules__report-title">${esc(title)}</h4>
-      ${items.map((it) => `<div class="seat-rules__report-item seat-rules__report-item--${it.level}">${esc(it.message)}</div>`).join('')}`;
-  }
-
-  function seatViolationReport(title, violations) {
-    if (!violations.length) {
-      return renderSeatRuleReport(title, [{ level: 'ok', message: '✓ 켜진 규칙을 모두 지키고 있습니다.' }]);
-    }
-    return renderSeatRuleReport(`${title} — ${violations.length}건 위반`,
-      violations.map((v) => ({ level: 'error', message: v.message })));
-  }
-
-  function checkCurrentSeatRules(cls) {
-    const violations = ctEvaluateSeatRules(cls.seatLayout, getActiveStudents(), ensureSeatRules(cls), {
-      confirmed: cls.seatConfirmed,
-      nameOf: seatRuleNameOf(cls),
-    });
-    setSeatRuleAlert(cls, violations);
-    seatRulesUi.report = seatViolationReport('현재 배치 검사', violations);
-    renderSeatRulesModal(cls);
-  }
-
-  function checkSeatRuleFeasibility(cls) {
-    const students = getActiveStudents();
-    if (!students.length) {
-      showToast('학생이 없습니다.');
-      return;
-    }
-    const rules = syncSeatRules(cls);
-    const nameOf = seatRuleNameOf(cls);
-    const items = ctCheckSeatRuleFeasibility(students, cls.seatLayout, rules, {
-      confirmed: cls.seatConfirmed,
-      nameOf,
-    });
-    if (!getActiveSeatRules(cls).length) {
-      items.push({ level: 'info', message: '켜진 규칙이 없습니다.' });
-    } else {
-      const trial = ctAutoAssignSeats(students, cls.seatLayout, {
-        random: $('#optRandom')?.checked !== false,
-        genderBalance: !!$('#optGender')?.checked,
-        rules,
-        confirmed: cls.seatConfirmed,
-      });
-      const trialViolations = ctEvaluateSeatRules(trial, students, rules, { confirmed: cls.seatConfirmed, nameOf });
-      items.push(trialViolations.length
-        ? {
-          level: 'error',
-          message: `모의 배치 결과: ${trialViolations.length}건은 지키기 어렵습니다 — ${trialViolations.slice(0, 3).map((v) => v.message).join(' / ')}${trialViolations.length > 3 ? ' …' : ''}`,
-        }
-        : { level: 'ok', message: '✓ 모의 배치 결과: 켜진 규칙을 모두 지킬 수 있습니다.' });
-    }
-    seatRulesUi.report = renderSeatRuleReport('가능 여부 검사', items);
-    renderSeatRulesModal(cls);
-  }
-
-  function describeSeatRule(rule, nameOf) {
-    switch (rule.type) {
-      case 'rowRange': return `${rule.studentIds.length}명 · ${rule.from}~${rule.to}행`;
-      case 'colRange': return `${rule.studentIds.length}명 · ${rule.from}~${rule.to}열`;
-      case 'allowSeats':
-      case 'avoidSeats': return `${rule.studentIds.length}명 · ${rule.seatKeys.length}칸`;
-      case 'fixedSeat':
-        return rule.studentId && rule.seatKey ? `${nameOf(rule.studentId)} → ${ctSeatLabel(rule.seatKey)}` : '';
-      case 'separate':
-      case 'pair':
-        return rule.studentA && rule.studentB ? `${nameOf(rule.studentA)} ↔ ${nameOf(rule.studentB)}` : '';
-      case 'avoidPrevious': return rule.target === 'all' ? '전원' : `${rule.studentIds.length}명`;
-      default: return '';
-    }
-  }
-
-  function seatRuleStudentLabel(s) {
-    return `${esc(s.number)}. ${esc(s.name)}`;
-  }
-
-  function renderRuleStudentPicker(rule, students) {
-    const selected = new Set(rule.studentIds || []);
-    const expanded = seatRulesUi.expanded.has(rule.id);
-    const chosen = students.filter((s) => selected.has(s.id));
-    const content = expanded
-      ? `<div class="seat-rule-student-grid">
-          ${students.map((s) => `<button type="button" class="seat-rule-pick ${selected.has(s.id) ? 'is-on' : ''}" data-act="toggle-student" data-student-id="${s.id}" aria-pressed="${selected.has(s.id)}">${seatRuleStudentLabel(s)}</button>`).join('')}
-        </div>`
-      : `<div class="seat-rule-chips">${chosen.length
-        ? chosen.map((s) => `<span class="seat-rule-chip">${seatRuleStudentLabel(s)}</span>`).join('')
-        : '<span class="seat-rule-muted">선택한 학생이 없습니다</span>'}</div>`;
-    return `
-      <div class="seat-rule-students">
-        <div class="seat-rule-students__head">
-          <span class="field-label">대상 학생 (${chosen.length}명)</span>
-          ${expanded && chosen.length ? '<button type="button" class="seat-rule-link" data-act="clear-students">모두 해제</button>' : ''}
-          <button type="button" class="seat-rule-link" data-act="toggle-students">${expanded ? '접기 ▴' : '학생 선택 ▾'}</button>
-        </div>
-        ${content}
-      </div>`;
-  }
-
-  function renderRuleStudentSelect(field, value, students) {
-    return `<select class="input input-select seat-rule-select" data-field="${field}">
-      <option value="">학생 선택</option>
-      ${students.map((s) => `<option value="${s.id}" ${s.id === value ? 'selected' : ''}>${seatRuleStudentLabel(s)}</option>`).join('')}
-    </select>`;
-  }
-
-  /** mode: preview(줄·분단 미리보기) | multi(칸 여러 개 선택) | single(칸 1개 선택) */
-  function renderRuleSeatMap(rule, layout, mode) {
-    const selected = mode === 'single'
-      ? new Set([rule.seatKey].filter(Boolean))
-      : new Set(mode === 'multi' ? rule.seatKeys : []);
-    const pos = layout.teacherPosition || 'front';
-    const deskLabel = { left: '교탁 (왼쪽)', right: '교탁 (오른쪽)' }[pos] || '교탁';
-    const desk = `<div class="seat-rule-map__desk">${deskLabel}</div>`;
-    const seatByKey = new Map(layout.seats.map((s) => [s.key, s]));
-
-    let cells = '<span class="seat-rule-map__axis"></span>';
-    for (let c = 0; c < layout.cols; c++) cells += `<span class="seat-rule-map__axis">${c + 1}</span>`;
-    for (let r = 0; r < layout.rows; r++) {
-      cells += `<span class="seat-rule-map__axis">${r + 1}</span>`;
-      for (let c = 0; c < layout.cols; c++) {
-        const key = `${r}-${c}`;
-        const seat = seatByKey.get(key);
-        const isVoid = !seat || seat.isEmpty || seat.isAisle;
-        const hit = !isVoid && (mode === 'preview' ? ctSeatMatchesPositionRule(rule, seat) : selected.has(key));
-        const name = seat?.studentId ? getStudentName(seat.studentId) : '';
-        const title = `${r + 1}행 ${c + 1}열${name ? ` · ${name}` : ''}${isVoid ? ' (빈 좌석)' : ''}`;
-        const cls = `seat-rule-map__cell${hit ? ' is-hit' : ''}${isVoid ? ' is-void' : ''}`;
-        const label = `<span class="seat-rule-map__name">${esc(name)}</span>`;
-        if (mode === 'preview' || isVoid) {
-          cells += `<span class="${cls}" title="${escAttr(title)}">${label}</span>`;
-        } else {
-          const act = mode === 'single' ? 'pick-seat' : 'toggle-seat';
-          cells += `<button type="button" class="${cls}" data-act="${act}" data-seat-key="${key}" title="${escAttr(title)}" aria-pressed="${hit}">${label}</button>`;
-        }
-      }
-    }
-    const tone = rule.type === 'avoidSeats' ? ' seat-rule-map--avoid' : '';
-    return `
-      <div class="seat-rule-map${tone}">
-        ${pos === 'back' ? '' : desk}
-        <div class="seat-rule-map__grid" style="grid-template-columns: 20px repeat(${layout.cols}, minmax(0, 1fr))">${cells}</div>
-        ${pos === 'back' ? desk : ''}
-      </div>`;
-  }
-
-  function renderRangePreview(rule, layout) {
-    const isRow = rule.type === 'rowRange';
-    const max = isRow ? layout.rows : layout.cols;
-    const warn = rule.from > max
-      ? `<p class="seat-rule-warn">교실은 ${max}${isRow ? '행' : '열'}까지입니다. 해당 좌석이 없습니다.</p>`
-      : '';
-    return warn + renderRuleSeatMap(rule, layout, 'preview');
-  }
-
-  function renderSeatRuleBadges(rule) {
-    return [
-      rule.needsReview ? '<span class="seat-rule-badge seat-rule-badge--warn" title="교실을 다시 만들면서 지정한 칸이 사라졌습니다. 칸을 다시 고르거나 켜면 없어진 칸을 빼고 적용합니다.">확인 필요</span>' : '',
-      !rule.needsReview && !ctIsSeatRuleComplete(rule) ? '<span class="seat-rule-badge">미완성</span>' : '',
-      !rule.needsReview && rule.enabled === false ? '<span class="seat-rule-badge">꺼짐</span>' : '',
-    ].join('');
-  }
-
-  /** 입력 중인 칸은 그대로 두고 요약·배지·미리보기만 갱신 (다시 그리면 이어지는 클릭이 사라짐) */
-  function refreshSeatRuleCard(cls, rule) {
-    const card = $(`#seatRulesRoot [data-rule-id="${rule.id}"]`);
-    if (!card) return;
-    card.querySelector('.seat-rule-card__summary').textContent = describeSeatRule(rule, seatRuleNameOf(cls));
-    card.querySelector('.seat-rule-card__badges').innerHTML = renderSeatRuleBadges(rule);
-    card.querySelectorAll('input[type="number"][data-field]').forEach((input) => {
-      if (String(rule[input.dataset.field]) !== input.value) input.value = rule[input.dataset.field];
-    });
-    const slot = card.querySelector('[data-slot="preview"]');
-    if (slot) slot.innerHTML = renderRangePreview(rule, cls.seatLayout);
-  }
-
-  function renderSeatRuleBody(rule, cls, students) {
-    const layout = cls.seatLayout;
-    switch (rule.type) {
-      case 'rowRange':
-      case 'colRange': {
-        const isRow = rule.type === 'rowRange';
-        const unit = isRow ? '행' : '열';
-        const max = isRow ? layout.rows : layout.cols;
-        return `
-          ${renderRuleStudentPicker(rule, students)}
-          <div class="seat-rule-field-row">
-            <span>${isRow ? '화면 위에서' : '왼쪽에서'}</span>
-            <input type="number" class="input seat-rule-num" data-field="from" min="1" max="${max}" value="${rule.from}" aria-label="시작 ${unit}" />
-            <span>${unit} ~</span>
-            <input type="number" class="input seat-rule-num" data-field="to" min="1" max="${max}" value="${rule.to}" aria-label="끝 ${unit}" />
-            <span>${unit}</span>
-            <button type="button" class="seat-rule-link" data-act="front-preset">교탁 쪽 맨 앞줄로</button>
-          </div>
-          <div data-slot="preview">${renderRangePreview(rule, layout)}</div>`;
-      }
-      case 'allowSeats':
-      case 'avoidSeats':
-        return `
-          ${renderRuleStudentPicker(rule, students)}
-          <div class="seat-rule-field-row">
-            <span class="field-label">${rule.type === 'allowSeats' ? '앉을 수 있는 칸' : '앉으면 안 되는 칸'} (${rule.seatKeys.length}칸) — 칸을 눌러 선택·해제</span>
-            ${rule.seatKeys.length ? '<button type="button" class="seat-rule-link" data-act="clear-seats">모두 해제</button>' : ''}
-          </div>
-          ${renderRuleSeatMap(rule, layout, 'multi')}`;
-      case 'fixedSeat':
-        return `
-          <div class="seat-rule-field-row">
-            ${renderRuleStudentSelect('studentId', rule.studentId, students)}
-            <span>→ ${rule.seatKey ? ctSeatLabel(rule.seatKey) : '아래에서 칸을 고르세요'}</span>
-          </div>
-          ${renderRuleSeatMap(rule, layout, 'single')}`;
-      case 'separate':
-        return `
-          <div class="seat-rule-field-row">
-            ${renderRuleStudentSelect('studentA', rule.studentA, students)}
-            <span>↔</span>
-            ${renderRuleStudentSelect('studentB', rule.studentB, students)}
-          </div>
-          <div class="seat-rule-field-row">
-            <label class="checkbox"><input type="checkbox" data-field="noAdjacent" ${rule.noAdjacent ? 'checked' : ''} /> 옆자리 금지</label>
-            <label class="checkbox"><input type="checkbox" data-field="noFrontBack" ${rule.noFrontBack ? 'checked' : ''} /> 앞뒤 금지</label>
-            <label class="checkbox"><input type="checkbox" data-field="noDiagonal" ${rule.noDiagonal ? 'checked' : ''} /> 대각선 금지</label>
-          </div>`;
-      case 'pair':
-        return `
-          <div class="seat-rule-field-row">
-            ${renderRuleStudentSelect('studentA', rule.studentA, students)}
-            <span>↔</span>
-            ${renderRuleStudentSelect('studentB', rule.studentB, students)}
-          </div>
-          <div class="seat-rule-field-row">
-            <label class="checkbox"><input type="radio" name="pairDir-${rule.id}" data-field="direction" value="side" ${rule.direction !== 'frontBack' ? 'checked' : ''} /> 옆자리로 붙이기</label>
-            <label class="checkbox"><input type="radio" name="pairDir-${rule.id}" data-field="direction" value="frontBack" ${rule.direction === 'frontBack' ? 'checked' : ''} /> 앞뒤로 붙이기</label>
-          </div>`;
-      case 'avoidPrevious': {
-        const c = cls.seatConfirmed;
-        return `
-          <p class="seat-rule-muted">${c
-            ? `기준: ${formatSeatConfirmDate(c.at)}에 확정한 배치 (${c.seats.length}명)`
-            : "확정한 지난 자리가 없습니다. 자리배치 화면의 '📌 이번 자리 확정'을 먼저 눌러 주세요."}</p>
-          <div class="seat-rule-field-row">
-            <label class="checkbox"><input type="radio" name="prevTarget-${rule.id}" data-field="target" value="all" ${rule.target === 'all' ? 'checked' : ''} /> 전원</label>
-            <label class="checkbox"><input type="radio" name="prevTarget-${rule.id}" data-field="target" value="selected" ${rule.target === 'selected' ? 'checked' : ''} /> 선택한 학생만</label>
-          </div>
-          ${rule.target === 'selected' ? renderRuleStudentPicker(rule, students) : ''}
-          <div class="seat-rule-field-row">
-            <label class="checkbox"><input type="checkbox" data-field="sameSeat" ${rule.sameSeat ? 'checked' : ''} /> 같은 자리 금지</label>
-            <label class="checkbox"><input type="checkbox" data-field="samePartner" ${rule.samePartner ? 'checked' : ''} /> 같은 옆자리 짝 금지</label>
-          </div>
-          <div class="seat-rule-field-row">
-            <span>지난 줄에서</span>
-            <input type="number" class="input seat-rule-num" data-field="minRowShift" min="0" max="${layout.rows}" value="${rule.minRowShift}" aria-label="최소 이동 줄 수" />
-            <span>줄 이상 이동 (0 = 사용 안 함)</span>
-          </div>`;
-      }
-      default:
-        return '';
-    }
-  }
-
-  function renderSeatRuleCard(rule, cls, students, nameOf) {
-    const meta = CT_SEAT_RULE_TYPES[rule.type];
-    const on = rule.enabled !== false && !rule.needsReview;
-    return `
-      <article class="seat-rule-card${on ? '' : ' is-off'}" data-rule-id="${rule.id}">
-        <header class="seat-rule-card__head">
-          <label class="seat-rule-switch" title="켜기·끄기">
-            <input type="checkbox" data-field="enabled" ${on ? 'checked' : ''} aria-label="${escAttr(meta.label)} 규칙 켜기" />
-            <span class="seat-rule-switch__track" aria-hidden="true"></span>
-          </label>
-          <span class="seat-rule-card__title">${meta.icon} ${meta.label}</span>
-          <span class="seat-rule-card__badges">${renderSeatRuleBadges(rule)}</span>
-          <span class="seat-rule-card__summary">${esc(describeSeatRule(rule, nameOf))}</span>
-          <button type="button" class="btn-icon-only seat-rule-card__del" data-act="delete" aria-label="규칙 삭제">✕</button>
-        </header>
-        <div class="seat-rule-card__body">
-          ${renderSeatRuleBody(rule, cls, students)}
-          <label class="seat-rule-memo">
-            <span class="field-label">메모</span>
-            <input type="text" class="input" data-field="memo" maxlength="40" value="${escAttr(rule.memo || '')}" placeholder="교사만 보는 메모 (선택)" />
-          </label>
-        </div>
-      </article>`;
-  }
-
-  function renderSeatRulesModal(cls) {
-    const root = $('#seatRulesRoot');
-    if (!root) return;
-    const rules = ensureSeatRules(cls);
-    const students = getSeatRuleStudents(cls);
-    const nameOf = seatRuleNameOf(cls);
-    const groupOf = (r) => CT_SEAT_RULE_TYPES[r.type]?.group;
-    const visible = seatRulesUi.tab === 'all' ? rules : rules.filter((r) => groupOf(r) === seatRulesUi.tab);
-    const tabs = SEAT_RULE_TABS.map((t) => {
-      const n = t.id === 'all' ? rules.length : rules.filter((r) => groupOf(r) === t.id).length;
-      const active = seatRulesUi.tab === t.id;
-      return `<button type="button" class="seat-rules__tab${active ? ' is-active' : ''}" role="tab" aria-selected="${active}" data-act="tab" data-tab="${t.id}">${t.label} <span class="seat-rules__tab-count">${n}</span></button>`;
-    }).join('');
-    const picker = seatRulesUi.pickerOpen ? `
-      <div class="seat-rules__picker">
-        ${SEAT_RULE_PICKER.map((p) => `
-          <button type="button" class="seat-rule-type" data-act="add-rule" data-type="${p.type}"${p.preset ? ` data-preset="${p.preset}"` : ''}>
-            <span class="seat-rule-type__icon" aria-hidden="true">${p.icon}</span>
-            <span class="seat-rule-type__label">${p.label}</span>
-            <span class="seat-rule-type__desc">${p.desc}</span>
-          </button>`).join('')}
-      </div>` : '';
-    const empty = rules.length
-      ? '이 분류에 등록된 규칙이 없습니다.'
-      : '등록된 규칙이 없습니다. 위의 종류를 눌러 규칙을 추가하세요.';
-
-    root.innerHTML = `
-      <p class="separation-modal-note">교사 전용 설정입니다. 자동 배치는 켜진 규칙을 최대한 지키고, 지키지 못한 규칙은 배치 후 알려 드립니다. 줄·분단 번호는 화면 기준(맨 위가 1행, 맨 왼쪽이 1열)입니다.</p>
-      <div class="seat-rules__toolbar">
-        <div class="seat-rules__tabs" role="tablist" aria-label="규칙 분류">${tabs}</div>
-        <button type="button" class="btn ${seatRulesUi.pickerOpen ? 'btn-secondary' : 'btn-primary'} seat-rules__add" data-act="open-picker">${seatRulesUi.pickerOpen ? '닫기' : '+ 규칙 추가'}</button>
-      </div>
-      ${picker}
-      <div class="seat-rules__list">
-        ${visible.length ? visible.map((r) => renderSeatRuleCard(r, cls, students, nameOf)).join('') : `<p class="seat-rules__empty">${empty}</p>`}
-      </div>
-      <div class="seat-rules__report" aria-live="polite">${seatRulesUi.report}</div>`;
-  }
-
-  function addSeatRule(cls, type, preset) {
-    if (!CT_SEAT_RULE_TYPES[type]) return;
-    const layout = cls.seatLayout;
-    let rule;
-    if (preset === 'frontRow') rule = ctCreateFrontRowRule(layout, { memo: '앞자리 희망' });
-    else if (type === 'rowRange') rule = ctCreateSeatRule(type, { from: 1, to: Math.min(2, layout.rows) });
-    else if (type === 'colRange') rule = ctCreateSeatRule(type, { from: 1, to: Math.min(2, layout.cols) });
-    else rule = ctCreateSeatRule(type);
-    ensureSeatRules(cls).push(rule);
-    if (Array.isArray(rule.studentIds) && rule.type !== 'avoidPrevious') seatRulesUi.expanded.add(rule.id);
-    seatRulesUi.pickerOpen = false;
-    seatRulesUi.tab = 'all';
-    persistSeatRules(cls);
-    renderSeatRulesModal(cls);
-    $(`#seatRulesRoot [data-rule-id="${rule.id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }
-
-  function reviveSeatRule(cls, rule) {
-    if (!rule.needsReview) return;
-    const removed = ctResolveSeatRuleReview(rule, cls.seatLayout);
-    rule.enabled = true;
-    if (removed) showToast(`없어진 칸 ${removed}개를 규칙에서 뺐습니다.`);
-  }
-
-  function handleSeatRulesClick(e, cls) {
-    const el = e.target.closest('[data-act]');
-    if (!el || !e.currentTarget.contains(el)) return;
-    const act = el.dataset.act;
-    if (act === 'tab') {
-      seatRulesUi.tab = el.dataset.tab;
-      renderSeatRulesModal(cls);
-      return;
-    }
-    if (act === 'open-picker') {
-      seatRulesUi.pickerOpen = !seatRulesUi.pickerOpen;
-      renderSeatRulesModal(cls);
-      return;
-    }
-    if (act === 'add-rule') {
-      addSeatRule(cls, el.dataset.type, el.dataset.preset);
-      return;
-    }
-
-    const card = el.closest('[data-rule-id]');
-    const rules = ensureSeatRules(cls);
-    const rule = card && rules.find((r) => r.id === card.dataset.ruleId);
-    if (!rule) return;
-
-    switch (act) {
-      case 'delete':
-        rules.splice(rules.indexOf(rule), 1);
-        seatRulesUi.expanded.delete(rule.id);
-        showToast(`${CT_SEAT_RULE_TYPES[rule.type].label} 규칙을 삭제했습니다.`);
-        break;
-      case 'toggle-students':
-        if (seatRulesUi.expanded.has(rule.id)) seatRulesUi.expanded.delete(rule.id);
-        else seatRulesUi.expanded.add(rule.id);
-        renderSeatRulesModal(cls);
-        return;
-      case 'toggle-student': {
-        const ids = new Set(rule.studentIds);
-        const id = el.dataset.studentId;
-        if (ids.has(id)) ids.delete(id);
-        else ids.add(id);
-        rule.studentIds = getSeatRuleStudents(cls).map((s) => s.id).filter((sid) => ids.has(sid));
-        break;
-      }
-      case 'clear-students':
-        rule.studentIds = [];
-        break;
-      case 'toggle-seat': {
-        reviveSeatRule(cls, rule);
-        const key = el.dataset.seatKey;
-        rule.seatKeys = rule.seatKeys.includes(key)
-          ? rule.seatKeys.filter((k) => k !== key)
-          : [...rule.seatKeys, key];
-        break;
-      }
-      case 'clear-seats':
-        rule.seatKeys = [];
-        break;
-      case 'pick-seat':
-        reviveSeatRule(cls, rule);
-        rule.seatKey = el.dataset.seatKey;
-        break;
-      case 'front-preset': {
-        const preset = ctCreateFrontRowRule(cls.seatLayout);
-        if (preset.type !== rule.type) {
-          showToast(`교탁이 ${cls.seatLayout.teacherPosition === 'left' ? '왼쪽' : '오른쪽'}이라 분단 범위 규칙으로 바꿨습니다.`);
-        }
-        rule.type = preset.type;
-        rule.from = preset.from;
-        rule.to = preset.to;
-        break;
-      }
-      default:
-        return;
-    }
-    persistSeatRules(cls);
-    renderSeatRulesModal(cls);
-  }
-
-  function handleSeatRulesChange(e, cls) {
-    const el = e.target;
-    const field = el.dataset.field;
-    const card = el.closest('[data-rule-id]');
-    const rule = card && ensureSeatRules(cls).find((r) => r.id === card.dataset.ruleId);
-    if (!rule || !field) return;
-
-    switch (field) {
-      case 'enabled':
-        if (el.checked) reviveSeatRule(cls, rule);
-        rule.enabled = el.checked;
-        break;
-      case 'memo':
-        rule.memo = el.value.trim().slice(0, 40);
-        persistSeatRules(cls);
-        return;
-      case 'from':
-      case 'to': {
-        const n = Math.max(1, parseInt(el.value, 10) || 1);
-        rule[field] = n;
-        if (rule.from > rule.to) {
-          if (field === 'from') rule.to = n;
-          else rule.from = n;
-        }
-        persistSeatRules(cls);
-        refreshSeatRuleCard(cls, rule);
-        return;
-      }
-      case 'minRowShift':
-        rule.minRowShift = Math.max(0, parseInt(el.value, 10) || 0);
-        persistSeatRules(cls);
-        refreshSeatRuleCard(cls, rule);
-        return;
-      case 'studentId':
-      case 'studentA':
-      case 'studentB':
-        rule[field] = el.value;
-        if (rule.studentA && rule.studentA === rule.studentB) showToast('서로 다른 두 학생을 골라주세요.');
-        break;
-      case 'noAdjacent':
-      case 'noFrontBack':
-      case 'noDiagonal':
-      case 'sameSeat':
-      case 'samePartner':
-        rule[field] = el.checked;
-        break;
-      case 'direction':
-        rule.direction = el.value === 'frontBack' ? 'frontBack' : 'side';
-        break;
-      case 'target':
-        rule.target = el.value === 'selected' ? 'selected' : 'all';
-        if (rule.target === 'selected') seatRulesUi.expanded.add(rule.id);
-        break;
-      default:
-        return;
-    }
-    persistSeatRules(cls);
-    renderSeatRulesModal(cls);
-  }
-
-  function openSeatRulesModal(options = {}) {
-    const cls = getSeatClass();
-    if (!cls) {
-      showToast('학급을 먼저 선택해주세요.');
-      return;
-    }
-    if (seatRevealBusy) {
-      showToast('자리 배치 연출이 끝난 뒤 열어주세요.');
-      return;
-    }
-    if (!cls.seatLayout) {
-      cls.seatLayout = ctCreateSeatGrid(5, 6, { teacherPosition: 'front' });
-    }
-    const rules = syncSeatRules(cls);
-    ctSaveState(state);
-    seatRulesUi = {
-      tab: 'all',
-      pickerOpen: !rules.length,
-      expanded: new Set(),
-      report: options.report || '',
-    };
-    showModal(
-      '⚙️ 규칙 설정',
-      '<div class="seat-rules" id="seatRulesRoot"></div>',
-      `<button type="button" class="btn btn-secondary" id="modalSeatRulesCheck">현재 배치 검사</button>
-       <button type="button" class="btn btn-secondary" id="modalSeatRulesFeasibility">가능 여부 검사</button>
-       <button type="button" class="btn btn-primary" id="modalSeatRulesDone">완료</button>`,
-      { wide: true }
-    );
-    const root = $('#seatRulesRoot');
-    root.addEventListener('click', (e) => handleSeatRulesClick(e, cls));
-    root.addEventListener('change', (e) => handleSeatRulesChange(e, cls));
-    $('#modalSeatRulesCheck').onclick = () => checkCurrentSeatRules(cls);
-    $('#modalSeatRulesFeasibility').onclick = () => checkSeatRuleFeasibility(cls);
-    $('#modalSeatRulesDone').onclick = () => {
-      closeModal();
-      updateSeatRulesButton(cls);
-    };
-    renderSeatRulesModal(cls);
   }
 
   function renderUnassigned(cls) {
@@ -1821,1404 +1316,11 @@
     renderPresentation();
   }
 
-  /* ── 당번관리 ── */
-  function getCleaningMeta(cls) {
-    if (!cls.dutyMeta) cls.dutyMeta = {};
-    if (!cls.dutyMeta.cleaning) cls.dutyMeta.cleaning = { slots: 4, mode: 'single' };
-    const meta = cls.dutyMeta.cleaning;
-    meta.slots = Math.min(12, Math.max(1, parseInt(meta.slots, 10) || 4));
-    if (meta.mode !== 'weekly') meta.mode = 'single';
-    return meta;
-  }
-
-  function getDutyPrintMeta(cls) {
-    if (!cls.dutyMeta) cls.dutyMeta = {};
-    if (!cls.dutyMeta.print) {
-      cls.dutyMeta.print = { cleaning: true, meal: true, environment: true };
-    }
-    return cls.dutyMeta.print;
-  }
-
-  function dutyHasPrintableData(cls, key) {
-    if (key === 'cleaning') {
-      const meta = getCleaningMeta(cls);
-      if (meta.mode === 'weekly') {
-        const week = ctEnsureWeeklyCleaning(cls.cleaningWeek, meta.slots);
-        return week.some((day) => day.assignments.some((a) => a.studentId));
-      }
-      return (cls.duties?.cleaning || []).some((d) => d.studentId);
-    }
-    return (cls.duties?.[key] || []).some((d) => d.studentId);
-  }
-
-  function getDutyPrintHint(cls) {
-    const printMeta = getDutyPrintMeta(cls);
-    const selected = DUTY_PRINT_TYPES.filter((key) => printMeta[key]);
-    if (!selected.length) return '출력할 항목을 1개 이상 선택해주세요.';
-    const ready = selected.filter((key) => dutyHasPrintableData(cls, key));
-    if (!ready.length) return '선택한 항목에 배정된 당번이 없습니다.';
-    const labels = ready.map((key) => CT_DUTY_TYPES[key].label);
-    return `출력 예정: ${labels.join(', ')}`;
-  }
-
-  function renderDutyPrintSettings(cls, panel) {
-    const printMeta = getDutyPrintMeta(cls);
-    panel.innerHTML = `
-      <p class="duty-print-desc">출력할 당번 항목을 선택한 뒤 당번표를 생성하세요.</p>
-      <div class="duty-print-options">
-        ${DUTY_PRINT_TYPES.map((key) => {
-          const val = CT_DUTY_TYPES[key];
-          const hasData = dutyHasPrintableData(cls, key);
-          return `<label class="checkbox duty-print-option${hasData ? '' : ' duty-print-option--empty'}">
-            <input type="checkbox" class="duty-print-check" data-print-type="${key}" ${printMeta[key] ? 'checked' : ''} />
-            <span>${val.icon} ${val.label}${hasData ? '' : ' <span class="field-hint">(배정 없음)</span>'}</span>
-          </label>`;
-        }).join('')}
-      </div>
-      <div class="form-row duty-print-actions">
-        <button type="button" class="btn btn-primary" id="btnPrintDuties">🖨️ 당번표 출력</button>
-        <button type="button" class="btn btn-secondary" id="btnSelectAllDutyPrint">전체 선택</button>
-        <button type="button" class="btn btn-secondary" id="btnDeselectAllDutyPrint">전체 해제</button>
-      </div>
-      <p class="field-hint duty-print-hint" id="dutyPrintHint">${esc(getDutyPrintHint(cls))}</p>`;
-
-    const updateHint = () => {
-      const hint = $('#dutyPrintHint');
-      if (hint) hint.textContent = getDutyPrintHint(cls);
-    };
-
-    panel.querySelectorAll('.duty-print-check').forEach((cb) => {
-      cb.addEventListener('change', () => {
-        printMeta[cb.dataset.printType] = cb.checked;
-        saveAndRefresh();
-        updateHint();
-      });
-    });
-
-    $('#btnSelectAllDutyPrint').onclick = () => {
-      DUTY_PRINT_TYPES.forEach((key) => { printMeta[key] = true; });
-      saveAndRefresh();
-      renderDuties();
-    };
-    $('#btnDeselectAllDutyPrint').onclick = () => {
-      DUTY_PRINT_TYPES.forEach((key) => { printMeta[key] = false; });
-      saveAndRefresh();
-      renderDuties();
-    };
-    $('#btnPrintDuties').onclick = () => printDuties();
-  }
-
-  function bindCleaningSettings(cls, students, panel) {
-    const meta = getCleaningMeta(cls);
-    const slotsInput = $('#dutyCleaningSlots');
-    if (slotsInput) {
-      slotsInput.addEventListener('change', () => {
-        meta.slots = Math.min(12, Math.max(1, parseInt(slotsInput.value, 10) || 4));
-        slotsInput.value = String(meta.slots);
-        if (meta.mode === 'weekly') {
-          cls.cleaningWeek = ctEnsureWeeklyCleaning(cls.cleaningWeek, meta.slots);
-        } else {
-          cls.duties.cleaning = ctResizeDutySlots(cls.duties.cleaning, meta.slots, 'cleaning');
-        }
-        saveAndRefresh();
-        renderDuties();
-      });
-    }
-    panel.querySelectorAll('[data-cleaning-mode]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        meta.mode = btn.dataset.cleaningMode === 'weekly' ? 'weekly' : 'single';
-        if (meta.mode === 'weekly') {
-          cls.cleaningWeek = ctEnsureWeeklyCleaning(cls.cleaningWeek, meta.slots);
-        } else {
-          cls.duties.cleaning = ctResizeDutySlots(cls.duties.cleaning, meta.slots, 'cleaning');
-        }
-        saveAndRefresh();
-        renderDuties();
-      });
-    });
-  }
-
-  function renderCleaningWeekly(cls, students, panel, meta) {
-    cls.cleaningWeek = ctEnsureWeeklyCleaning(cls.cleaningWeek, meta.slots);
-    const week = cls.cleaningWeek;
-    const slotHeaders = week[0]?.assignments?.map((a) => `<th>${esc(a.label)}</th>`).join('') || '';
-    const opts = `<option value="">선택</option>${students.map((s) =>
-      `<option value="${s.id}">${s.number}. ${esc(s.name)}</option>`
-    ).join('')}`;
-
-    panel.innerHTML = `
-      ${renderCleaningSettingsHtml(meta)}
-      <div class="form-row duty-cleaning-actions">
-        <button type="button" class="btn btn-primary" id="btnAssignCleaningWeek">주간 랜덤 배정</button>
-        <button type="button" class="btn btn-secondary" id="btnClearCleaningWeek">표 비우기</button>
-      </div>
-      <div class="duty-week-wrap">
-        <table class="duty-week-table">
-          <thead>
-            <tr><th>요일</th>${slotHeaders}</tr>
-          </thead>
-          <tbody>
-            ${week.map((day, dayIdx) => `
-              <tr>
-                <th scope="row">${esc(day.short)}</th>
-                ${day.assignments.map((a, slotIdx) => `
-                  <td>
-                    <select class="input input-select duty-week-select"
-                      data-day-idx="${dayIdx}" data-slot-idx="${slotIdx}">${opts}</select>
-                  </td>
-                `).join('')}
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>`;
-
-    bindCleaningSettings(cls, students, panel);
-
-    panel.querySelectorAll('.duty-week-select').forEach((sel) => {
-      const dayIdx = parseInt(sel.dataset.dayIdx, 10);
-      const slotIdx = parseInt(sel.dataset.slotIdx, 10);
-      const assignment = week[dayIdx]?.assignments?.[slotIdx];
-      if (assignment) sel.value = assignment.studentId || '';
-      sel.addEventListener('change', () => {
-        const student = students.find((s) => s.id === sel.value);
-        const target = week[dayIdx].assignments[slotIdx];
-        target.studentId = student?.id || null;
-        target.name = student?.name || '';
-        target.number = student?.number || 0;
-        saveAndRefresh();
-      });
-    });
-
-    $('#btnAssignCleaningWeek').onclick = () => {
-      cls.cleaningWeek = ctAssignWeeklyCleaning(students, meta.slots);
-      saveAndRefresh();
-      renderDuties();
-      showToast('주간 청소 당번표가 배정되었습니다.');
-    };
-    $('#btnClearCleaningWeek').onclick = () => {
-      cls.cleaningWeek = ctCreateEmptyWeeklyCleaning(meta.slots);
-      saveAndRefresh();
-      renderDuties();
-      showToast('주간 당번표를 비웠습니다.');
-    };
-  }
-
-  function renderCleaningSettingsHtml(meta) {
-    return `
-      <div class="duty-cleaning-settings">
-        <div class="form-row duty-cleaning-settings__row">
-          <label class="field">
-            <span class="field-label">청소 인원</span>
-            <input type="number" id="dutyCleaningSlots" class="input" min="1" max="12" value="${meta.slots}" />
-          </label>
-          <div class="duty-mode-tabs" role="tablist" aria-label="청소 당번 모드">
-            <button type="button" class="duty-mode-tab${meta.mode === 'single' ? ' is-active' : ''}" data-cleaning-mode="single">당번 배정</button>
-            <button type="button" class="duty-mode-tab${meta.mode === 'weekly' ? ' is-active' : ''}" data-cleaning-mode="weekly">주간 당번표</button>
-          </div>
-        </div>
-        <p class="field-hint duty-cleaning-hint">
-          ${meta.mode === 'weekly' ? '월~금요일 청소 당번표를 만들고 수정할 수 있습니다.' : '이번 당번을 인원 수에 맞게 배정합니다.'}
-        </p>
-      </div>`;
-  }
-
-  function renderCleaningDuties(cls, students, panel) {
-    const meta = getCleaningMeta(cls);
-    if (meta.mode === 'weekly') {
-      renderCleaningWeekly(cls, students, panel, meta);
-      return;
-    }
-
-    let duties = ctResizeDutySlots(cls.duties.cleaning, meta.slots, 'cleaning');
-    cls.duties.cleaning = duties;
-    const opts = `<option value="">선택</option>${students.map((s) =>
-      `<option value="${s.id}">${s.number}. ${esc(s.name)}</option>`
-    ).join('')}`;
-
-    const hasAssigned = duties.some((d) => d.studentId);
-    panel.innerHTML = `
-      ${renderCleaningSettingsHtml(meta)}
-      <div class="form-row duty-cleaning-actions">
-        <button type="button" class="btn btn-primary" id="btnAssignDuty">${hasAssigned ? '다시 랜덤 배정' : '랜덤 배정'}</button>
-        ${hasAssigned ? '<button type="button" class="btn btn-secondary" id="btnRotateDuty">한 칸 로테이션</button>' : ''}
-      </div>
-      ${duties.map((d, i) => `
-        <div class="duty-slot">
-          <label>${esc(d.label)}</label>
-          <select class="input input-select duty-select" data-idx="${i}">${opts}</select>
-        </div>
-      `).join('')}`;
-
-    bindCleaningSettings(cls, students, panel);
-
-    panel.querySelectorAll('.duty-select').forEach((sel, i) => {
-      sel.value = duties[i].studentId || '';
-      sel.addEventListener('change', () => {
-        const student = students.find((s) => s.id === sel.value);
-        duties[i].studentId = student?.id || null;
-        duties[i].name = student?.name || '';
-        duties[i].number = student?.number || 0;
-        saveAndRefresh();
-      });
-    });
-
-    $('#btnAssignDuty').onclick = () => {
-      cls.duties.cleaning = ctAssignDuties(students, 'cleaning', meta.slots);
-      saveAndRefresh();
-      renderDuties();
-    };
-    const rotateBtn = $('#btnRotateDuty');
-    if (rotateBtn) {
-      rotateBtn.onclick = () => {
-        cls.duties.cleaning = ctRotateDuties(duties, students);
-        saveAndRefresh();
-        renderDuties();
-      };
-    }
-  }
-
-  function renderDuties() {
-    const tabs = $('#dutyTabs');
-    const dutyTabHtml = Object.entries(CT_DUTY_TYPES).map(([key, val]) =>
-      `<button type="button" class="duty-tab ${key === activeDutyType ? 'is-active' : ''}" data-duty="${key}">${val.icon} ${val.label}</button>`
-    ).join('');
-    const printTabHtml = `<button type="button" class="duty-tab duty-tab--print ${activeDutyType === 'print' ? 'is-active' : ''}" data-duty="print">🖨️ 출력 설정</button>`;
-    tabs.innerHTML = dutyTabHtml + printTabHtml;
-    tabs.querySelectorAll('.duty-tab').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        activeDutyType = btn.dataset.duty;
-        renderDuties();
-      });
-    });
-
-    const cls = ctGetActiveClass(state);
-    if (!cls) return;
-    if (!cls.duties) cls.duties = { cleaning: [], meal: [], environment: [], other: [] };
-    const students = cls.students || [];
-    const panel = $('#dutyPanel');
-
-    if (activeDutyType === 'print') {
-      renderDutyPrintSettings(cls, panel);
-      return;
-    }
-
-    if (activeDutyType === 'cleaning') {
-      if (!students.length) {
-        panel.innerHTML = '<p class="field-hint">학생 명단이 없습니다. 관리실에서 학생을 등록해주세요.</p>';
-        return;
-      }
-      renderCleaningDuties(cls, students, panel);
-      return;
-    }
-
-    const duties = cls.duties[activeDutyType] || [];
-
-    if (!duties.length) {
-      panel.innerHTML = `
-        <p>당번 슬롯 수를 설정하고 배정하세요.</p>
-        <div class="form-row">
-          <label class="field"><span class="field-label">슬롯 수</span><input type="number" id="dutySlots" class="input" min="1" max="20" value="4" /></label>
-          <button type="button" class="btn btn-primary" id="btnAssignDuty">랜덤 배정</button>
-        </div>`;
-      $('#btnAssignDuty').onclick = () => {
-        const slots = parseInt($('#dutySlots').value, 10) || 4;
-        cls.duties[activeDutyType] = ctAssignDuties(students, activeDutyType, slots);
-        saveAndRefresh();
-        renderDuties();
-      };
-      return;
-    }
-
-    const opts = students.map((s) => `<option value="${s.id}">${s.number}. ${esc(s.name)}</option>`).join('');
-    panel.innerHTML = `
-      <div class="form-row" style="margin-bottom:14px">
-        <button type="button" class="btn btn-primary" id="btnReassignDuty">다시 랜덤 배정</button>
-        <button type="button" class="btn btn-secondary" id="btnRotateDuty">한 칸 로테이션</button>
-      </div>
-      ${duties.map((d, i) => `
-        <div class="duty-slot">
-          <label>${esc(d.label)}</label>
-          <select class="input input-select duty-select" data-idx="${i}">${opts}</select>
-        </div>
-      `).join('')}`;
-
-    panel.querySelectorAll('.duty-select').forEach((sel, i) => {
-      sel.value = duties[i].studentId || '';
-      sel.addEventListener('change', () => {
-        const student = students.find((s) => s.id === sel.value);
-        duties[i].studentId = student?.id || null;
-        duties[i].name = student?.name || '';
-        duties[i].number = student?.number || 0;
-        saveAndRefresh();
-      });
-    });
-    $('#btnReassignDuty').onclick = () => {
-      cls.duties[activeDutyType] = ctAssignDuties(students, activeDutyType, duties.length);
-      saveAndRefresh();
-      renderDuties();
-    };
-    $('#btnRotateDuty').onclick = () => {
-      cls.duties[activeDutyType] = ctRotateDuties(duties, students);
-      saveAndRefresh();
-      renderDuties();
-    };
-  }
-
-  /* ── 랜덤추첨 / 룰렛 ── */
-  function getRouletteModeState() {
-    return rouletteState[rouletteMode] || rouletteState.students;
-  }
-
-  function setRouletteMode(mode) {
-    const next = mode === 'custom' ? 'custom' : 'students';
-    if (rouletteMode === next) return;
-    rouletteMode = next;
-    renderRoulettePanel();
-    renderRouletteWinner(null);
-    renderRouletteHistory();
-  }
-
-  function getRoulettePool() {
-    const students = getActiveStudents();
-    if (!students.length) return [];
-    const classId = state.activeClassId;
-    const poolIds = new Set(ctLoadRoulettePool(classId, students.map((s) => s.id)));
-    let participants = students.filter((s) => poolIds.has(s.id));
-    if (!participants.length && poolIds.size === 0 && students.length) {
-      participants = students;
-    }
-    return participants.filter((s) => !rouletteState.students.excluded.has(s.id));
-  }
-
-  function getRouletteCustomPool() {
-    const classId = state.activeClassId;
-    const items = ctLoadRouletteCustomItems(classId);
-    return items.filter((item) => !rouletteState.custom.excluded.has(item.id));
-  }
-
-  function getRouletteSegments() {
-    if (rouletteMode === 'custom') {
-      return ctBuildRouletteCustomSegments(getRouletteCustomPool());
-    }
-    return ctBuildRouletteSegments(getRoulettePool());
-  }
-
-  function getRouletteEmptyHtml() {
-    if (rouletteMode === 'custom') {
-      return '<div class="roulette-empty">룰렛 항목이 없습니다.<br>항목을 추가해주세요.</div>';
-    }
-    return '<div class="roulette-empty">학생 명단이 없습니다.<br>관리실에서 학생을 등록해주세요.</div>';
-  }
-
-  function formatRouletteWinner(segment) {
-    if (!segment) return '';
-    if (rouletteMode === 'custom') return esc(segment.label || segment.name);
-    return `${esc(segment.number)}. ${esc(segment.name)}`;
-  }
-
-  function formatRouletteHistoryEntry(entry) {
-    if (entry.mode === 'custom') return esc(entry.name);
-    return `${esc(entry.number)}. ${esc(entry.name)}`;
-  }
-
-  function renderRoulettePanel() {
-    renderRouletteWheel($('#rouletteWheel'));
-    renderRouletteHistory();
-  }
-
-  function rouletteHexToRgb(hex) {
-    const h = String(hex || '#cccccc').replace('#', '');
-    return {
-      r: parseInt(h.slice(0, 2), 16) || 204,
-      g: parseInt(h.slice(2, 4), 16) || 204,
-      b: parseInt(h.slice(4, 6), 16) || 204,
-    };
-  }
-
-  function rouletteMixHex(hex, targetHex, ratio) {
-    const c = rouletteHexToRgb(hex);
-    const t = rouletteHexToRgb(targetHex);
-    const mix = (a, b) => Math.round(a + (b - a) * ratio);
-    const r = mix(c.r, t.r);
-    const g = mix(c.g, t.g);
-    const b = mix(c.b, t.b);
-    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-  }
-
-  function getRouletteLabelLayout(n, label, lr) {
-    const segmentAngle = (Math.PI * 2) / n;
-    const maxTextWidth = Math.max(18, 2 * lr * Math.sin(segmentAngle / 2) * 0.88);
-    const len = [...label].length;
-    let fontSize = n > 32 ? 8 : n > 24 ? 9 : n > 16 ? 10 : n > 10 ? 11 : 13;
-    if (len > 5) fontSize -= Math.min(4, Math.floor((len - 5) * 0.45));
-    fontSize = Math.max(6, fontSize);
-    return { fontSize, maxTextWidth };
-  }
-
-  function buildRouletteSvg(segments) {
-    const n = segments.length;
-    if (!n) {
-      return getRouletteEmptyHtml();
-    }
-    const cx = 200;
-    const cy = 200;
-    const r = 188;
-    let defs = `
-      <defs>
-        <radialGradient id="roulette-bg-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="#fff"/>
-          <stop offset="72%" stop-color="#faf8fc"/>
-          <stop offset="100%" stop-color="#f0ecf5"/>
-        </radialGradient>
-        <linearGradient id="roulette-rim" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#ffe0ec"/>
-          <stop offset="50%" stop-color="#fff"/>
-          <stop offset="100%" stop-color="#dceeff"/>
-        </linearGradient>
-      </defs>`;
-    let paths = '';
-    let labels = '';
-
-    segments.forEach((seg, i) => {
-      const light = rouletteMixHex(seg.color, '#ffffff', 0.38);
-      const deep = rouletteMixHex(seg.color, '#c8b8d0', 0.18);
-      const mid = (i / n) * Math.PI * 2 - Math.PI / 2 + Math.PI / n;
-      const gradDeg = (mid * 180) / Math.PI;
-      defs += `<linearGradient id="roulette-seg-${i}" gradientTransform="rotate(${gradDeg} ${cx} ${cy})">
-        <stop offset="0%" stop-color="${light}"/>
-        <stop offset="55%" stop-color="${seg.color}"/>
-        <stop offset="100%" stop-color="${deep}"/>
-      </linearGradient>`;
-
-      const start = (i / n) * Math.PI * 2 - Math.PI / 2;
-      const end = ((i + 1) / n) * Math.PI * 2 - Math.PI / 2;
-      const x1 = cx + r * Math.cos(start);
-      const y1 = cy + r * Math.sin(start);
-      const x2 = cx + r * Math.cos(end);
-      const y2 = cy + r * Math.sin(end);
-      const large = end - start > Math.PI ? 1 : 0;
-      paths += `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z"
-        fill="url(#roulette-seg-${i})" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/>`;
-
-      const labelMid = (start + end) / 2;
-      const lr = r * 0.66;
-      const lx = cx + lr * Math.cos(labelMid);
-      const ly = cy + lr * Math.sin(labelMid);
-      const deg = (labelMid * 180) / Math.PI + 90;
-      const label = seg.label || seg.name;
-      const { fontSize, maxTextWidth } = getRouletteLabelLayout(n, label, lr);
-      labels += `<text x="${lx}" y="${ly}" class="roulette-wheel__label" font-size="${fontSize}" text-anchor="middle" dominant-baseline="middle" transform="rotate(${deg} ${lx} ${ly})" textLength="${maxTextWidth.toFixed(1)}" lengthAdjust="spacingAndGlyphs">${esc(label)}</text>`;
-    });
-
-    const decor = `
-      <circle cx="${cx}" cy="${cy}" r="${r + 6}" fill="none" stroke="url(#roulette-rim)" stroke-width="7" opacity="0.95"/>
-      <circle cx="${cx}" cy="${cy}" r="${r + 2}" fill="none" stroke="#fff" stroke-width="2" opacity="0.9"/>`;
-
-    const ariaLabel = rouletteMode === 'custom' ? '항목 룰렛' : '학생 룰렛';
-    return `<svg viewBox="0 0 400 400" role="img" aria-label="${ariaLabel}">${defs}${paths}${decor}${labels}</svg>`;
-  }
-
-  function renderRouletteWheel(wheelEl = $('#rouletteWheel')) {
-    if (!wheelEl) return;
-    const segments = getRouletteSegments();
-    const modeState = getRouletteModeState();
-    wheelEl.innerHTML = buildRouletteSvg(segments);
-    wheelEl.style.transform = `rotate(${modeState.rotation}deg)`;
-    wheelEl.classList.remove('is-spinning');
-  }
-
-  function renderRouletteWinner(segment, spinning = false) {
-    const html = spinning
-      ? '<p class="roulette-winner__placeholder">룰렛이 돌아가는 중…</p>'
-      : !segment
-        ? '<p class="roulette-winner__placeholder">버튼을 눌러 룰렛을 돌려보세요</p>'
-        : `<div class="roulette-winner__card">
-            <p class="roulette-winner__label">당첨</p>
-            <p class="roulette-winner__name">${formatRouletteWinner(segment)}</p>
-          </div>`;
-    ['#rouletteWinner', '#fsRouletteWinner'].forEach((sel) => {
-      const el = $(sel);
-      if (el) el.innerHTML = html;
-    });
-  }
-
-  function renderRouletteHistory() {
-    const wrap = $('#rouletteHistory');
-    const list = $('#rouletteHistoryList');
-    if (!wrap || !list) return;
-    const history = getRouletteModeState().history;
-    if (!history.length) {
-      wrap.hidden = true;
-      return;
-    }
-    wrap.hidden = false;
-    list.innerHTML = history.map((h, i) =>
-      `<li>${i + 1}. ${formatRouletteHistoryEntry(h)}</li>`
-    ).join('');
-  }
-
-  function showRouletteSpinError() {
-    if (rouletteMode === 'custom') {
-      const allItems = ctLoadRouletteCustomItems(state.activeClassId);
-      if (!allItems.length) {
-        showToast('룰렛 항목을 추가해주세요.');
-      } else if (rouletteState.custom.excluded.size) {
-        showToast('모든 항목이 당첨되었습니다. 다시 채우기를 눌러주세요.');
-      } else {
-        showToast('룰렛 항목이 없습니다.');
-      }
-      return;
-    }
-    const students = getActiveStudents();
-    const classId = state.activeClassId;
-    const poolIds = classId ? ctLoadRoulettePool(classId, students.map((s) => s.id)) : [];
-    if (students.length && !poolIds.length) {
-      showToast('룰렛 대상자를 1명 이상 선택해주세요.');
-    } else if (rouletteState.students.excluded.size) {
-      showToast('모든 학생이 당첨되었습니다. 다시 채우기를 눌러주세요.');
-    } else {
-      showToast('학생 명단이 없습니다.');
-    }
-  }
-
-  function spinRoulette() {
-    if (rouletteSpinning) return;
-    const segments = getRouletteSegments();
-    if (!segments.length) {
-      showRouletteSpinError();
-      return;
-    }
-
-    const wheels = [$('#rouletteWheel'), $('#fsRouletteWheel')].filter(Boolean);
-    if (!wheels.length) return;
-
-    const modeState = getRouletteModeState();
-    const winnerIdx = ctPickRouletteWinnerIndex(segments.length);
-    const winner = segments[winnerIdx];
-    const targetRotation = ctCalcRouletteTargetRotation(winnerIdx, segments.length, modeState.rotation);
-
-    rouletteSpinning = true;
-    renderRouletteWinner(null, true);
-    const spinBtn = $('#btnSpinRoulette');
-    const fsSpinBtn = $('#btnFsSpin');
-    if (spinBtn) spinBtn.disabled = true;
-    if (fsSpinBtn) fsSpinBtn.disabled = true;
-
-    try {
-      window.CTGameSFX?.unlock?.();
-      window.CTGameSFX?.whoosh?.();
-      window.CTGameSFX?.loopTicks?.(4200, 160);
-    } catch { /* ignore */ }
-
-    wheels.forEach((wheel) => {
-      wheel.classList.add('is-spinning');
-      requestAnimationFrame(() => {
-        wheel.style.transform = `rotate(${targetRotation}deg)`;
-      });
-    });
-
-    const onEnd = () => {
-      wheels[0].removeEventListener('transitionend', onEnd);
-      modeState.rotation = targetRotation;
-      rouletteSpinning = false;
-      wheels.forEach((wheel) => wheel.classList.remove('is-spinning'));
-
-      try { window.CTGameSFX?.win?.(); } catch { /* ignore */ }
-
-      if ($('#rouletteNoDuplicate')?.checked) {
-        modeState.excluded.add(winner.id);
-        modeState.rotation = 0;
-        wheels.forEach((wheel) => renderRouletteWheel(wheel));
-      } else {
-        wheels.forEach((wheel) => {
-          wheel.style.transform = `rotate(${modeState.rotation}deg)`;
-        });
-      }
-
-      const historyEntry = rouletteMode === 'custom'
-        ? { id: winner.id, name: winner.name, mode: 'custom' }
-        : { id: winner.id, number: winner.number, name: winner.name, mode: 'students' };
-      modeState.history.unshift(historyEntry);
-      renderRouletteWinner(winner);
-      renderRouletteHistory();
-      if (spinBtn) spinBtn.disabled = false;
-      if (fsSpinBtn) fsSpinBtn.disabled = false;
-    };
-
-    wheels[0].addEventListener('transitionend', onEnd);
-  }
-
-  function resetRoulette() {
-    const modeState = getRouletteModeState();
-    modeState.excluded.clear();
-    modeState.history = [];
-    modeState.rotation = 0;
-    rouletteSpinning = false;
-    renderRouletteWheel($('#rouletteWheel'));
-    renderRouletteWheel($('#fsRouletteWheel'));
-    renderRouletteWinner(null);
-    renderRouletteHistory();
-    const spinBtn = $('#btnSpinRoulette');
-    const fsSpinBtn = $('#btnFsSpin');
-    if (spinBtn) spinBtn.disabled = false;
-    if (fsSpinBtn) fsSpinBtn.disabled = false;
-    showToast(rouletteMode === 'custom' ? '항목 룰렛을 다시 채웠습니다.' : '학생 룰렛을 다시 채웠습니다.');
-  }
-
-  function openRouletteFullscreen() {
-    if (!getRouletteSegments().length) {
-      showRouletteSpinError();
-      return;
-    }
-    const overlay = $('#fullscreenOverlay');
-    const content = $('#fullscreenContent');
-    overlay.hidden = false;
-    overlay.classList.add('is-open');
-    overlay.setAttribute('aria-hidden', 'false');
-    content.className = 'fullscreen-content fullscreen-roulette';
-    content.innerHTML = `
-      <div class="roulette-workspace">
-        <div class="roulette-stage" id="fsRouletteStage">
-          <div class="roulette-pointer" aria-hidden="true"></div>
-          <div class="roulette-wheel-wrap">
-            <div class="roulette-wheel" id="fsRouletteWheel"></div>
-          </div>
-          <div class="roulette-hub-cap" aria-hidden="true"></div>
-        </div>
-        <div class="roulette-winner" id="fsRouletteWinner">
-          <p class="roulette-winner__placeholder">룰렛 돌리기 버튼을 눌러주세요</p>
-        </div>
-        <button type="button" class="btn btn-primary" id="btnFsSpin" style="margin-top:8px">룰렛 돌리기!</button>
-      </div>`;
-
-    const fsWheel = $('#fsRouletteWheel');
-    renderRouletteWheel(fsWheel);
-    fsWheel.style.transform = `rotate(${getRouletteModeState().rotation}deg)`;
-    $('#btnFsSpin').onclick = () => spinRoulette();
-  }
-
-  function renderGamesPanel() {
-    const classId = state.activeClassId;
-    const students = getActiveStudents();
-    if (classId && students.length) {
-      if (!sessionStorage.getItem(ctLadderPoolKey(classId))) {
-        ctSaveLadderPool(classId, students.map((s) => s.id));
-      }
-      if (!sessionStorage.getItem(ctRoulettePoolKey(classId))) {
-        ctSaveRoulettePool(classId, students.map((s) => s.id));
-      }
-      if (!sessionStorage.getItem(ctPinballPoolKey(classId))) {
-        ctSavePinballPool(classId, students.map((s) => s.id));
-      }
-    }
-    CTGames?.showLobby();
-  }
-
-  function openGameWinnerFullscreen(title, winnersHtml) {
-    const overlay = $('#fullscreenOverlay');
-    const content = $('#fullscreenContent');
-    overlay.hidden = false;
-    overlay.classList.add('is-open');
-    overlay.setAttribute('aria-hidden', 'false');
-    content.className = 'fullscreen-content fullscreen-game';
-    content.innerHTML = `
-      <p class="fullscreen-game__title">${esc(title)}</p>
-      <div class="fullscreen-game__winners">${winnersHtml}</div>`;
-  }
-
-  function buildWinnerFullscreenHtml(students) {
-    return students.map((s) =>
-      `<div class="random-winner">${esc(s.number)}. ${esc(s.name)}</div>`
-    ).join('');
-  }
-
-  function initGamesModule() {
-    if (!window.CTGames) return;
-    CTGames.init({
-      showToast,
-      esc,
-      showModal,
-      closeModal,
-      getStudents: getActiveStudents,
-      getClassId: () => state.activeClassId,
-      getTreasureRewards: () => state.treasureRewards || [],
-      onRoulettePoolChange: () => {
-        rouletteState.students.excluded.clear();
-        rouletteState.students.rotation = 0;
-        renderRoulettePanel();
-        if (rouletteMode === 'students') renderRouletteWinner(null);
-      },
-      onRouletteModeChange: (mode) => {
-        setRouletteMode(mode);
-      },
-      onRouletteCustomChange: () => {
-        rouletteState.custom.excluded.clear();
-        rouletteState.custom.rotation = 0;
-        renderRoulettePanel();
-        if (rouletteMode === 'custom') {
-          renderRouletteWinner(null);
-          renderRouletteHistory();
-        }
-      },
-      renderRoulette: () => {
-        const classId = state.activeClassId;
-        if (classId) rouletteMode = ctLoadRouletteMode(classId);
-        renderRoulettePanel();
-        renderRouletteWinner(null);
-        renderRouletteHistory();
-      },
-      openSlotFullscreen: () => {
-        const students = getActiveStudents();
-        const count = parseInt($('#gamePickCount')?.value, 10) || 1;
-        const winners = ctPickRandom(students, count, !$('#gameNoDuplicate')?.checked);
-        openGameWinnerFullscreen('🎰 슬롯머신', buildWinnerFullscreenHtml(winners));
-      },
-      openTreasureFullscreen: () => {
-        const rewards = state.treasureRewards || [];
-        const reward = ctPickTreasureReward(rewards);
-        if (!reward) {
-          showToast('관리실에서 보물상자 보상을 등록해주세요.');
-          return;
-        }
-        openGameWinnerFullscreen('📦 보물상자', `<div class="treasure-prize-card treasure-prize-card--fs">${esc(reward)}</div>`);
-      },
-      openDiceFullscreen: () => {
-        const dots = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-        const count = window.CTGames?.getDiceCount?.() || 2;
-        const values = Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 6));
-        const sum = values.reduce((acc, v) => acc + v, 0);
-        openGameWinnerFullscreen('🎲 주사위', `
-          <p class="dice-fs-roll">${values.map((v) => dots[v - 1]).join(' + ')}</p>
-          <p class="dice-fs-sum">${sum}</p>`);
-      },
-      openLadderFullscreen: () => {
-        showToast('사다리는 화면에서 진행 후 결과를 확인하세요.');
-      },
-    });
-    CTGames.bindEvents();
-  }
-
-  /* ── 타이머 / 스톱워치 ── */
-  function formatTime(sec) {
-    const total = Math.max(0, Math.floor(sec));
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    if (h > 0) {
-      return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    }
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  }
-
-  function getTimerDisplayValue() {
-    return timerMode === 'stopwatch' ? stopwatchElapsed : timerRemaining;
-  }
-
-  function updateTimerDisplay() {
-    const value = getTimerDisplayValue();
-    const el = $('#timerDisplay');
-    if (el) {
-      el.textContent = formatTime(value);
-      if (timerMode === 'countdown') {
-        el.classList.toggle('is-warning', timerRemaining <= 60 && timerRemaining > 0);
-        el.classList.toggle('is-done', timerRemaining <= 0);
-      } else {
-        el.classList.remove('is-warning', 'is-done');
-      }
-    }
-    const fsEl = $('#fullscreenContent .timer-display');
-    if (fsEl) {
-      fsEl.textContent = formatTime(value);
-      if (timerMode === 'countdown') {
-        fsEl.classList.toggle('is-warning', timerRemaining <= 60 && timerRemaining > 0);
-        fsEl.classList.toggle('is-done', timerRemaining <= 0);
-      } else {
-        fsEl.classList.remove('is-warning', 'is-done');
-      }
-    }
-  }
-
-  function pauseTimer() {
-    if (timerInterval) timerPausedMidRun = true;
-    clearInterval(timerInterval);
-    timerInterval = null;
-    timerRunning = false;
-  }
-
-  function switchTimerMode(mode) {
-    if (mode === timerMode) return;
-    pauseTimer();
-    timerPausedMidRun = false;
-    timerMode = mode;
-    $$('.timer-mode-tab').forEach((btn) => {
-      const active = btn.dataset.timerMode === mode;
-      btn.classList.toggle('is-active', active);
-      btn.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-    $('#timerCountdownPanel').hidden = mode !== 'countdown';
-    $('#timerStopwatchPanel').hidden = mode !== 'stopwatch';
-    if (mode === 'stopwatch') {
-      updateTimerDisplay();
-    } else {
-      const min = parseInt($('#timerMinutes')?.value, 10) || 0;
-      const sec = parseInt($('#timerSeconds')?.value, 10) || 0;
-      timerRemaining = min * 60 + sec;
-      updateTimerDisplay();
-    }
-  }
-
-  function startTimer() {
-    if (timerInterval) return;
-    if (timerMode === 'stopwatch') {
-      timerRunning = true;
-      timerInterval = setInterval(() => {
-        stopwatchElapsed++;
-        updateTimerDisplay();
-      }, 1000);
-      return;
-    }
-    if (!timerPausedMidRun) {
-      const min = parseInt($('#timerMinutes').value, 10) || 0;
-      const sec = parseInt($('#timerSeconds').value, 10) || 0;
-      timerRemaining = min * 60 + sec;
-    }
-    timerPausedMidRun = false;
-    timerRunning = true;
-    updateTimerDisplay();
-    timerInterval = setInterval(() => {
-      timerRemaining--;
-      updateTimerDisplay();
-      if (timerRemaining <= 0) {
-        pauseTimer();
-        try { new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2Onp6Wj4qEgHx4d3V0cnBwb29ubm1sa2ppaGhoZ2dmZmVlZGRkY2NiYmFhYGBfX15eXV1cXFtbWlpZWVhYV1dWVlZVVVRUVE9PT05OTk1NTEw=').play(); } catch {}
-      }
-    }, 1000);
-  }
-
-  function resetTimer() {
-    pauseTimer();
-    timerPausedMidRun = false;
-    if (timerMode === 'stopwatch') {
-      stopwatchElapsed = 0;
-    } else {
-      const min = parseInt($('#timerMinutes').value, 10) || 0;
-      const sec = parseInt($('#timerSeconds').value, 10) || 0;
-      timerRemaining = min * 60 + sec;
-    }
-    updateTimerDisplay();
-  }
-
   /* ── 출력 ── */
   function esc(str) {
     const d = document.createElement('div');
     d.textContent = str ?? '';
     return d.innerHTML;
-  }
-
-  function printHtml(contentHtml, options = {}) {
-    const { landscape = false } = options;
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('title', '인쇄');
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:0;height:0;border:0;visibility:hidden;';
-    document.body.appendChild(iframe);
-
-    const base = document.baseURI || window.location.href;
-    const printCss = new URL('print.css', base).href;
-    const fontCss = window.location.protocol === 'file:'
-      ? 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css'
-      : new URL('vendor/pretendard/pretendard.css', base).href;
-    const pageRule = landscape
-      ? '@page { size: landscape; margin: 8mm; }'
-      : '@page { size: portrait; margin: 12mm; }';
-    const bodyClass = landscape ? ' class="print-seat-mode"' : '';
-
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
-<link rel="stylesheet" href="${fontCss}">
-<link rel="stylesheet" href="${printCss}">
-<style>
-${pageRule}
-html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -apple-system, sans-serif; }
-</style></head><body${bodyClass}>${contentHtml}</body></html>`);
-    doc.close();
-
-    const win = iframe.contentWindow;
-    let cleaned = false;
-    const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
-      iframe.remove();
-    };
-
-    const doPrint = () => {
-      win.focus();
-      win.addEventListener('afterprint', cleanup, { once: true });
-      setTimeout(cleanup, 60000);
-      try {
-        win.print();
-      } catch {
-        cleanup();
-        showToast('인쇄를 시작할 수 없습니다. 브라우저 팝업 차단을 확인해주세요.');
-      }
-    };
-
-    const waitForStyles = () => {
-      const links = [...doc.querySelectorAll('link[rel="stylesheet"]')];
-      if (!links.length) {
-        setTimeout(doPrint, 50);
-        return;
-      }
-      let pending = links.length;
-      let printed = false;
-      const tryPrint = () => {
-        if (printed) return;
-        printed = true;
-        setTimeout(doPrint, 80);
-      };
-      const onLinkDone = () => {
-        pending -= 1;
-        if (pending <= 0) tryPrint();
-      };
-      links.forEach((link) => {
-        if (link.sheet) onLinkDone();
-        else {
-          link.addEventListener('load', onLinkDone, { once: true });
-          link.addEventListener('error', onLinkDone, { once: true });
-        }
-      });
-      setTimeout(tryPrint, 2500);
-    };
-
-    if (iframe.contentDocument?.readyState === 'complete') {
-      waitForStyles();
-    } else {
-      iframe.onload = waitForStyles;
-    }
-  }
-
-  function sortStudentsBySchoolNumber(students) {
-    return [...students].sort((a, b) => {
-      const na = Number(a.number);
-      const nb = Number(b.number);
-      const aNum = Number.isFinite(na) ? na : 0;
-      const bNum = Number.isFinite(nb) ? nb : 0;
-      if (aNum !== bNum) return aNum - bNum;
-      return String(a.name || '').localeCompare(String(b.name || ''), 'ko');
-    });
-  }
-
-  function buildClassroomRosterRowsHtml(students, rowCount) {
-    const sorted = sortStudentsBySchoolNumber(students);
-    let rows = '';
-    for (let i = 0; i < rowCount; i++) {
-      const st = sorted[i];
-      const numCell = st?.number != null && st.number !== '' ? esc(String(st.number)) : '';
-      rows += `<tr><td>${numCell}</td><td>${st ? esc(st.name) : ''}</td></tr>`;
-    }
-    return rows;
-  }
-
-  function buildClassroomRosterHtml(students, scale) {
-    const rows = buildClassroomRosterRowsHtml(students, scale.rosterRows);
-    return `
-      <aside class="print-seat-roster" style="width:${scale.rosterMm}mm">
-        <div class="print-seat-roster__title">☺ 명단 ☺</div>
-        <table class="print-seat-roster__table" style="font-size:${scale.rosterFontPt}pt">
-          <tbody>${rows}</tbody>
-        </table>
-      </aside>`;
-  }
-
-  function getSeatsSortedForPrintVariant(layout, variant) {
-    if (variant === 'board') {
-      return [...layout.seats].sort(
-        (a, b) => a.row * layout.cols + a.col - (b.row * layout.cols + b.col)
-      );
-    }
-    return ctSortSeatsForPrint(layout, true);
-  }
-
-  function buildSeatDeskHtml(variant, { preview = false } = {}) {
-    const deskLabel = '교탁';
-    if (preview) {
-      return `<div class="seat-preview-desk-wrap"><div class="seat-preview-desk seat-preview-desk--compact">${deskLabel}</div></div>`;
-    }
-    const posClass = variant === 'board' ? 'print-seat-desk--top' : 'print-seat-desk--bottom';
-    return `<div class="print-seat-desk-wrap"><div class="print-seat-desk ${posClass} print-seat-desk--compact">${deskLabel}</div></div>`;
-  }
-
-  function buildClassroomSeatPrintHtml(cls, layout, students, variant, scale, meta) {
-    const president = students.find((s) => s.id === meta.classPresidentId);
-    const vice = students.find((s) => s.id === meta.vicePresidentId);
-    const enrolled = students.length;
-    const classLabel = getClassDisplayLabel(cls);
-    const notice = meta.printNotice || '아이들이 자리를 임의로 바꿀 시 담임에게 꼭 이야기 해주세요~~~';
-    const deskTop = variant === 'board';
-
-    let html = `<style>
-      .print-page--seat .print-seat-grid { gap: ${scale.gapMm}mm; grid-template-rows: repeat(${scale.rows}, 1fr); }
-      .print-page--seat .print-seat-cell { font-size: ${scale.fontPt}pt; }
-      .print-seat-roster { width: ${scale.rosterMm}mm; }
-    </style>`;
-
-    html += `<div class="print-page print-page--seat print-seat-sheet print-seat-sheet--teacher${deskTop ? ' print-seat-sheet--board' : ''}">
-      <p class="print-seat-notice">${esc(notice)}</p>
-      <table class="print-seat-info">
-        <tr>
-          <td class="print-seat-info__class">${esc(classLabel)}</td>
-          <td class="print-seat-info__cell"><span class="print-seat-info__label">재적</span>${enrolled}명</td>
-          <td class="print-seat-info__cell"><span class="print-seat-info__label">담임</span>${esc(meta.homeroomTeacher || '')}</td>
-          <td class="print-seat-info__cell"><span class="print-seat-info__label">반장</span>${esc(president?.name || '')}</td>
-          <td class="print-seat-info__cell"><span class="print-seat-info__label">부반장</span>${esc(vice?.name || '')}</td>
-        </tr>
-      </table>
-      <div class="print-seat-body">
-        <div class="print-seat-main">
-          <div class="print-seat-center">`;
-
-    if (deskTop) html += buildSeatDeskHtml(variant);
-
-    html += `<div class="print-seat-grid" style="grid-template-columns:repeat(${layout.cols},1fr)">`;
-    getSeatsSortedForPrintVariant(layout, variant).forEach((seat) => {
-      if (seat.isAisle) {
-        html += `<div class="print-seat-cell print-seat-cell--aisle"></div>`;
-      } else if (seat.isEmpty) {
-        html += `<div class="print-seat-cell print-seat-cell--empty"></div>`;
-      } else {
-        const st = students.find((s) => s.id === seat.studentId);
-        html += `<div class="print-seat-cell">${esc(st?.name || '')}</div>`;
-      }
-    });
-    html += `</div>`;
-
-    if (!deskTop) html += buildSeatDeskHtml(variant);
-
-    html += `</div></div>`;
-    html += buildClassroomRosterHtml(students, scale);
-    html += `</div></div>`;
-    return html;
-  }
-
-  function buildClassroomSeatPreviewHtml(cls, layout, students, variant, meta) {
-    const president = students.find((s) => s.id === meta.classPresidentId);
-    const vice = students.find((s) => s.id === meta.vicePresidentId);
-    const enrolled = students.length;
-    const classLabel = getClassDisplayLabel(cls);
-    const notice = meta.printNotice || '아이들이 자리를 임의로 바꿀 시 담임에게 꼭 이야기 해주세요~~~';
-    const deskTop = variant === 'board';
-
-    const rosterRows = Math.max(30, students.length);
-    const rosterHtml = buildClassroomRosterRowsHtml(students, rosterRows);
-
-    let gridHtml = '';
-    getSeatsSortedForPrintVariant(layout, variant).forEach((seat) => {
-      if (seat.isAisle) {
-        gridHtml += `<div class="seat-preview-cell seat-preview-cell--aisle"></div>`;
-      } else if (seat.isEmpty) {
-        gridHtml += `<div class="seat-preview-cell seat-preview-cell--empty"></div>`;
-      } else {
-        const st = students.find((s) => s.id === seat.studentId);
-        gridHtml += `<div class="seat-preview-cell">${esc(st?.name || '')}</div>`;
-      }
-    });
-
-    const deskHtml = buildSeatDeskHtml(variant, { preview: true });
-    const boardBlock = deskTop
-      ? `${deskHtml}<div class="seat-preview-grid" style="grid-template-columns:repeat(${layout.cols},1fr)">${gridHtml}</div>`
-      : `<div class="seat-preview-grid" style="grid-template-columns:repeat(${layout.cols},1fr)">${gridHtml}</div>${deskHtml}`;
-
-    return `
-      <div class="seat-preview-sheet seat-preview-sheet--teacher${deskTop ? ' seat-preview-sheet--board' : ''}">
-        <p class="seat-preview-notice">${esc(notice)}</p>
-        <table class="seat-preview-info">
-          <tr>
-            <td class="seat-preview-info__class">${esc(classLabel)}</td>
-            <td class="seat-preview-info__cell"><span class="seat-preview-info__label">재적</span>${enrolled}명</td>
-            <td class="seat-preview-info__cell"><span class="seat-preview-info__label">담임</span>${esc(meta.homeroomTeacher || '')}</td>
-            <td class="seat-preview-info__cell"><span class="seat-preview-info__label">반장</span>${esc(president?.name || '')}</td>
-            <td class="seat-preview-info__cell"><span class="seat-preview-info__label">부반장</span>${esc(vice?.name || '')}</td>
-          </tr>
-        </table>
-        <div class="seat-preview-body">
-          <div class="seat-preview-main">
-            <div class="seat-preview-center">
-              ${boardBlock}
-            </div>
-          </div>
-          <aside class="seat-preview-roster">
-            <div class="seat-preview-roster__title">☺ 명단 ☺</div>
-            <table class="seat-preview-roster__table"><tbody>${rosterHtml}</tbody></table>
-          </aside>
-        </div>
-      </div>`;
-  }
-
-  function openSeatPrintPreview(variant = 'teacher') {
-    const cls = getSeatClass();
-    if (!cls?.seatLayout) { showToast('자리배치가 없습니다.'); return; }
-    const layout = variant === 'teacher'
-      ? ctMirrorLayoutForTeacher(cls.seatLayout)
-      : cls.seatLayout;
-    const students = getActiveStudents();
-    const meta = ensureSeatMeta(cls);
-    const previewHtml = buildClassroomSeatPreviewHtml(cls, layout, students, variant, meta);
-    const title = variant === 'board' ? '칠판 부착용 좌석표' : '교탁 부착용 좌석표';
-
-    showModal(
-      title,
-      `<div class="seat-preview-wrap">${previewHtml}</div>`,
-      `
-        <button type="button" class="btn btn-secondary" id="btnCloseSeatPreview">닫기</button>
-        <button type="button" class="btn btn-primary" id="btnPrintSeatPreview">🖨️ 출력하기</button>
-      `,
-      { wide: true }
-    );
-
-    $('#btnCloseSeatPreview')?.addEventListener('click', closeModal);
-    $('#btnPrintSeatPreview')?.addEventListener('click', () => {
-      closeModal();
-      printSeats(variant);
-    });
-  }
-
-  function openTeacherSeatPreview() {
-    openSeatPrintPreview('teacher');
-  }
-
-  function openBoardSeatPreview() {
-    openSeatPrintPreview('board');
-  }
-
-  function printSeats(variant = 'teacher') {
-    const cls = getSeatClass();
-    if (!cls?.seatLayout) { showToast('자리배치가 없습니다.'); return; }
-    const layout = variant === 'teacher'
-      ? ctMirrorLayoutForTeacher(cls.seatLayout)
-      : cls.seatLayout;
-    const students = getActiveStudents();
-    const meta = ensureSeatMeta(cls);
-    const scale = ctComputeSeatPrintScale(layout, {
-      hasRoster: true,
-      studentCount: students.length,
-      forTeacher: true,
-    });
-
-    const html = buildClassroomSeatPrintHtml(cls, layout, students, variant, scale, meta);
-    printHtml(html, { landscape: true });
-  }
-
-  function openSeatEnlargeFullscreen() {
-    const cls = getSeatClass();
-    if (!cls?.seatLayout) { showToast('자리배치가 없습니다.'); return; }
-    // 학생 화면용: 교탁이 위, 그 아래가 앞자리(편집 화면과 동일 방향)
-    const layout = cls.seatLayout;
-    const students = getActiveStudents();
-    const meta = ensureSeatMeta(cls);
-    const classLabel = getClassDisplayLabel(cls);
-    const president = students.find((s) => s.id === meta.classPresidentId);
-    const vice = students.find((s) => s.id === meta.vicePresidentId);
-
-    const sortedSeats = [...layout.seats].sort(
-      (a, b) => a.row * layout.cols + a.col - (b.row * layout.cols + b.col)
-    );
-    const cells = sortedSeats.map((seat) => {
-      if (seat.isAisle) return '<div class="seat-fs-cell seat-fs-cell--aisle"></div>';
-      if (seat.isEmpty) return '<div class="seat-fs-cell seat-fs-cell--empty"></div>';
-      const st = students.find((s) => s.id === seat.studentId);
-      if (!st) return '<div class="seat-fs-cell seat-fs-cell--vacant"></div>';
-      const isPres = meta.classPresidentId === st.id;
-      const isVice = meta.vicePresidentId === st.id;
-      const role = isPres ? '<span class="seat-fs-role seat-fs-role--president">반</span>'
-        : isVice ? '<span class="seat-fs-role seat-fs-role--vice">부</span>' : '';
-      return `<div class="seat-fs-cell">
-        ${role}
-        <span class="seat-fs-num">${esc(st.number)}</span>
-        <span class="seat-fs-name">${esc(st.name)}</span>
-      </div>`;
-    }).join('');
-
-    const overlay = $('#fullscreenOverlay');
-    const content = $('#fullscreenContent');
-    overlay.hidden = false;
-    overlay.classList.add('is-open', 'fullscreen-overlay--seats');
-    overlay.setAttribute('aria-hidden', 'false');
-    content.className = 'fullscreen-content fullscreen-seats';
-    content.innerHTML = `
-      <div class="seat-fs">
-        <header class="seat-fs__head">
-          <h2 class="seat-fs__title">${esc(classLabel)} 자리배치</h2>
-          <p class="seat-fs__meta">
-            재적 ${students.length}명
-            ${meta.homeroomTeacher ? ` · 담임 ${esc(meta.homeroomTeacher)}` : ''}
-            ${president ? ` · 반장 ${esc(president.name)}` : ''}
-            ${vice ? ` · 부반장 ${esc(vice.name)}` : ''}
-          </p>
-        </header>
-        <div class="seat-fs__board">
-          <div class="seat-fs-desk">교탁</div>
-          <div class="seat-fs-grid" style="grid-template-columns:repeat(${layout.cols}, minmax(0, 1fr))">${cells}</div>
-        </div>
-        <p class="seat-fs__hint">본인 자리를 확인하세요</p>
-      </div>`;
-  }
-
-  function printGroups() {
-    const cls = ctGetActiveClass(state);
-    if (!cls?.groupResult?.length) { showToast('모둠 편성 결과가 없습니다.'); return; }
-    let html = `<div class="print-page">
-      <div class="print-title">모둠표</div>
-      <div class="print-meta">${esc(getUserSchool())} ${esc(cls.name)}</div>
-      <div class="print-groups">`;
-    cls.groupResult.forEach((g) => {
-      html += `<div class="print-group-card"><h3>${g.number}모둠</h3><ul>`;
-      g.members.forEach((m) => { html += `<li>${m.number}. ${esc(m.name)}</li>`; });
-      html += `</ul></div>`;
-    });
-    html += `</div></div>`;
-    printHtml(html);
-  }
-
-  function buildPresentationPrintTableRows(items) {
-    return items.map((p) => `<tr><td>${p.order}</td><td>${p.number}</td><td>${esc(p.name)}</td></tr>`).join('');
-  }
-
-  function buildPresentationPrintTable(items) {
-    return `<table class="print-table"><thead><tr><th>순서</th><th>학번</th><th>이름</th></tr></thead><tbody>${buildPresentationPrintTableRows(items)}</tbody></table>`;
-  }
-
-  function buildPresentationPrintScaleCss(scale) {
-    const metaPt = Math.max(8, scale.titlePt - 3);
-    let css = `
-      .print-page--presentation { max-height: 273mm; overflow: hidden; }
-      .print-page--presentation .print-title { font-size: ${scale.titlePt}pt; margin-bottom: 3mm; }
-      .print-page--presentation .print-meta { font-size: ${metaPt}pt; margin-bottom: 3mm; }
-      .print-page--presentation .print-table { font-size: ${scale.fontPt}pt; line-height: 1.2; }
-      .print-page--presentation .print-table th,
-      .print-page--presentation .print-table td { padding: ${scale.padMm}mm ${(scale.padMm * 1.3).toFixed(1)}mm; }
-    `;
-    if (scale.mode === 'class') {
-      css += `.print-presentation-cols { grid-template-columns: repeat(${scale.cols}, 1fr); gap: ${scale.colGapMm}mm; }`;
-    } else {
-      css += `
-        .print-presentation-groups { display: grid; grid-template-columns: repeat(${scale.gridCols}, 1fr); gap: ${scale.gridGapMm}mm; }
-        .print-page--presentation .print-group-card { padding: ${scale.cardPadMm}mm; }
-        .print-page--presentation .print-group-card h3 { font-size: ${scale.h3Pt}pt; margin: 0 0 ${Math.max(1, scale.padMm)}mm; }
-      `;
-    }
-    return css;
-  }
-
-  function buildPresentationPrintHtml(cls, mode) {
-    const scale = mode === 'group'
-      ? ctComputePresentationPrintScale({ mode: 'group', byGroup: cls.presentationByGroup })
-      : ctComputePresentationPrintScale({ mode: 'class', order: cls.presentationOrder });
-    const title = mode === 'group' ? '모둠별 발표순서표' : '발표순서표';
-    let body = '';
-
-    if (mode === 'group') {
-      body = `<div class="print-presentation-groups">${cls.presentationByGroup.map((g) => `
-        <div class="print-group-card">
-          <h3>${g.groupNumber}모둠</h3>
-          ${buildPresentationPrintTable(g.order)}
-        </div>
-      `).join('')}</div>`;
-    } else {
-      const columns = ctSplitPresentationPrintColumns(cls.presentationOrder, scale.cols);
-      body = `<div class="print-presentation-cols">${columns.map((col) => buildPresentationPrintTable(col)).join('')}</div>`;
-    }
-
-    return `<style>${buildPresentationPrintScaleCss(scale)}</style>
-      <div class="print-page print-page--presentation">
-        <div class="print-title">${title}</div>
-        <div class="print-meta">${esc(getUserSchool())} ${esc(cls.name)}</div>
-        <div class="print-presentation-body">${body}</div>
-      </div>`;
-  }
-
-  function printPresentation() {
-    const cls = ctGetActiveClass(state);
-    if (!presentationViewActive) { showToast('먼저 순서를 생성해주세요.'); return; }
-
-    if (presentationMode === 'group') {
-      if (!cls?.presentationByGroup?.length) { showToast('발표순서가 없습니다.'); return; }
-      printHtml(buildPresentationPrintHtml(cls, 'group'));
-      return;
-    }
-
-    if (!cls?.presentationOrder?.length) { showToast('발표순서가 없습니다.'); return; }
-    printHtml(buildPresentationPrintHtml(cls, 'class'));
-  }
-
-  function printCleaningWeekTable(week) {
-    if (!week?.length) return '';
-    const headers = week[0].assignments.map((a) => `<th>${esc(a.label)}</th>`).join('');
-    const rows = week.map((day) => `
-      <tr>
-        <th>${esc(day.short)}</th>
-        ${day.assignments.map((a) => `<td>${a.number ? `${a.number}. ` : ''}${esc(a.name || '-')}</td>`).join('')}
-      </tr>
-    `).join('');
-    return `<table class="print-table duty-week-print"><thead><tr><th>요일</th>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
-  }
-
-  function appendDutyPrintSection(html, cls, key) {
-    const val = CT_DUTY_TYPES[key];
-    if (key === 'cleaning') {
-      const cleaningMeta = getCleaningMeta(cls);
-      if (cleaningMeta.mode === 'weekly' && cls.cleaningWeek?.length) {
-        const week = ctEnsureWeeklyCleaning(cls.cleaningWeek, cleaningMeta.slots);
-        if (!week.some((day) => day.assignments.some((a) => a.studentId))) return html;
-        return `${html}<h3 style="margin:16px 0 8px">${val.icon} ${val.label} (주간)</h3>${printCleaningWeekTable(week)}`;
-      }
-      const cleaning = cls.duties.cleaning || [];
-      if (!cleaning.some((d) => d.studentId)) return html;
-      let section = `${html}<h3 style="margin:16px 0 8px">${val.icon} ${val.label}</h3>
-        <table class="print-table"><thead><tr><th>역할</th><th>학번</th><th>이름</th></tr></thead><tbody>`;
-      cleaning.forEach((d) => {
-        if (!d.studentId) return;
-        section += `<tr><td>${esc(d.label)}</td><td>${d.number}</td><td>${esc(d.name)}</td></tr>`;
-      });
-      return `${section}</tbody></table>`;
-    }
-
-    const duties = cls.duties[key] || [];
-    if (!duties.some((d) => d.studentId)) return html;
-    let section = `${html}<h3 style="margin:16px 0 8px">${val.icon} ${val.label}</h3>
-      <table class="print-table"><thead><tr><th>역할</th><th>학번</th><th>이름</th></tr></thead><tbody>`;
-    duties.forEach((d) => {
-      if (!d.studentId) return;
-      section += `<tr><td>${esc(d.label)}</td><td>${d.number}</td><td>${esc(d.name)}</td></tr>`;
-    });
-    return `${section}</tbody></table>`;
-  }
-
-  function printDuties() {
-    const cls = ctGetActiveClass(state);
-    if (!cls?.duties) { showToast('당번 정보가 없습니다.'); return; }
-
-    const printMeta = getDutyPrintMeta(cls);
-    const selected = DUTY_PRINT_TYPES.filter((key) => printMeta[key]);
-    if (!selected.length) {
-      showToast('출력할 항목을 1개 이상 선택해주세요.');
-      return;
-    }
-    const printable = selected.filter((key) => dutyHasPrintableData(cls, key));
-    if (!printable.length) {
-      showToast('선택한 항목에 배정된 당번이 없습니다.');
-      return;
-    }
-
-    let html = `<div class="print-page">
-      <div class="print-title">당번표</div>
-      <div class="print-meta">${esc(getUserSchool())} ${esc(cls.name)}</div>`;
-    printable.forEach((key) => {
-      html = appendDutyPrintSection(html, cls, key);
-    });
-    html += `</div>`;
-    printHtml(html);
   }
 
   function openFullscreen(mode) {
@@ -3230,7 +1332,7 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
 
     if (mode === 'timer') {
       content.className = 'fullscreen-content fullscreen-timer';
-      const label = timerMode === 'stopwatch' ? '스톱워치' : '타이머';
+      const label = getTimerMode() === 'stopwatch' ? '스톱워치' : '타이머';
       content.innerHTML = `
         <p class="fullscreen-timer__mode">${label}</p>
         <div class="timer-display">${formatTime(getTimerDisplayValue())}</div>`;
@@ -3430,33 +1532,32 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
       renderClassList();
     });
 
-    $('#btnExport').addEventListener('click', ctExportData);
+    const exportBackup = () => {
+      ctExportData();
+      renderDataStatus();
+      showToast('백업 파일을 내려받았습니다.');
+    };
+    $('#btnExport').addEventListener('click', exportBackup);
+    $('#btnReminderBackup')?.addEventListener('click', exportBackup);
+    $('#btnReminderSnooze')?.addEventListener('click', () => {
+      ctSnoozeBackupReminder(7);
+      renderBackupReminder();
+    });
     $('#btnImport').addEventListener('click', () => $('#importFileInput').click());
     $('#importFileInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
+      e.target.value = '';
       if (!file) return;
       try {
-        await ctImportData(file);
-        state = ctLoadState();
-        renderOffice();
-        refreshHeader();
-        showToast('데이터가 복원되었습니다.');
+        const { data, summary } = await ctReadBackupFile(file);
+        confirmImportBackup(data, summary);
       } catch (err) {
         showToast(err.message);
       }
-      e.target.value = '';
     });
 
-    $('#btnReset').addEventListener('click', () => {
-      if (confirm('모든 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-        ctResetAll();
-        state = ctLoadState();
-        seatContext = { classId: null };
-        renderOffice();
-        refreshHeader();
-        showToast('초기화되었습니다.');
-      }
-    });
+    $('#btnReset').addEventListener('click', confirmResetAll);
+    $('#btnUndoData')?.addEventListener('click', confirmUndoData);
 
     $('#modalClose').addEventListener('click', closeModal);
     $('#modalBackdrop').addEventListener('click', (e) => {
@@ -3483,7 +1584,7 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
       const teacherPosition = $('#teacherPosition').value;
       cls.seatLayout = ctCreateSeatGrid(rows, cols, { teacherPosition });
       const flagged = ctFlagSeatRulesForLayout(ensureSeatRules(cls), cls.seatLayout);
-      seatRuleAlert = null;
+      resetSeatRuleAlert();
       saveAndRefresh();
       renderSeats();
       showToast(flagged
@@ -3559,7 +1660,7 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
         .filter((r) => r.type === 'fixedSeat')
         .map((r) => ({ studentId: r.studentId, seatKey: r.seatKey }));
       cls.seatLayout = ctAssignSeatsByNumber(students, cls.seatLayout, direction, { fixedSeats });
-      seatRuleAlert = null;
+      resetSeatRuleAlert();
       saveAndRefresh();
       renderSeats();
       const dirLabel = direction === 'vertical' ? '세로(열 우선)' : '가로(행 우선)';
@@ -3573,8 +1674,8 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'close') {
         clearSeatRuleAlert();
-      } else if (act === 'detail' && seatRuleAlert) {
-        openSeatRulesModal({ report: seatViolationReport('자동 배치 결과', seatRuleAlert.violations) });
+      } else if (act === 'detail' && getSeatRuleAlert()) {
+        openSeatRulesModal({ report: seatViolationReport('자동 배치 결과', getSeatRuleAlert().violations) });
       }
     });
     $('#seatHomeroomTeacher')?.addEventListener('change', (e) => {
@@ -3756,6 +1857,7 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: Pretendard, -
       }
       renderHub(playHomeEnterAnimation);
       renderHeroWelcome();
+      renderBackupReminder();
       initGamesModule();
       initOfficersModule();
       bindEvents();

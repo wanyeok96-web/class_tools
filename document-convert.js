@@ -72,6 +72,8 @@
   let assetsPromise = null;
   /** @type {Uint8Array|null} */
   let wasmMaster = null;
+  /** @type {Uint8Array|null} */
+  let inlineWasmBytes = null;
   /** @type {Uint8Array[]} */
   let fontMasters = [];
   let batchSeq = 0;
@@ -170,15 +172,28 @@
     });
   }
 
+  /** wasm-bytes.js(gzip + base64)를 풀어 WASM 바이트를 얻는다. file://에서도 동작. */
   async function loadInlineWasmBytes() {
-    if (window.__RHWPTOPDF_WASM__ instanceof Uint8Array) {
-      return window.__RHWPTOPDF_WASM__;
+    if (inlineWasmBytes) return inlineWasmBytes;
+    // 형식이 바뀌면 v 값을 올려 브라우저가 예전 파일을 캐시에서 쓰지 않게 한다
+    await loadScriptOnce(assetUrl('vendor/rhwptopdf/wasm-bytes.js?v=gz1'));
+    const packed = window.__RHWPTOPDF_WASM_GZ__;
+    if (!packed?.data) throw new Error('내장 WASM 데이터를 읽지 못했습니다.');
+    if (typeof DecompressionStream !== 'function') {
+      throw new Error('이 브라우저는 변환 엔진을 지원하지 않습니다. Chrome·Edge·웨일을 최신 버전으로 업데이트해 주세요.');
     }
-    await loadScriptOnce(assetUrl('vendor/rhwptopdf/wasm-bytes.js'));
-    if (!(window.__RHWPTOPDF_WASM__ instanceof Uint8Array)) {
-      throw new Error('내장 WASM 데이터를 읽지 못했습니다.');
+    const bin = atob(packed.data);
+    const gz = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) gz[i] = bin.charCodeAt(i);
+    const stream = new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    const isWasm = bytes[0] === 0x00 && bytes[1] === 0x61 && bytes[2] === 0x73 && bytes[3] === 0x6d;
+    if (bytes.length !== packed.size || !isWasm) {
+      throw new Error('내장 WASM 데이터가 손상되었습니다.');
     }
-    return window.__RHWPTOPDF_WASM__;
+    window.__RHWPTOPDF_WASM_GZ__ = null;
+    inlineWasmBytes = bytes;
+    return bytes;
   }
 
   function downloadBlob(blob, filename) {

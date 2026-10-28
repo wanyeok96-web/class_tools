@@ -6,8 +6,8 @@
     <meta name="color-scheme" content="light" />
     <meta name="description" content="학급 운영을 위한 모든 도구를 한 곳에 — 자리배치, 모둠편성, 랜덤게임, 발표순서, 임원투표, 당번관리, 타이머, 문서변환" />
     <title>Class Tools — 학급 운영 도구</title>
-    <link rel="stylesheet" href="vendor/pretendard/pretendard.css" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="vendor/pretendard/pretendard.css?v=20261028" />
+    <link rel="stylesheet" href="style.css?v=20261028" />
     <script>
       /* vendor/ 파일을 읽지 못하면 같은 버전의 CDN에서 불러온다 */
       function ctLoadFromCdn(url) {
@@ -23,7 +23,7 @@
         document.head.appendChild(ctFont);
       }
     </script>
-    <link rel="stylesheet" href="print.css" />
+    <link rel="stylesheet" href="print.css?v=20261028" />
     <style>
       body { color: #1c1c1e; margin: 0; }
       #bootError { display: none; margin: 16px; padding: 16px; background: #fff3f3; border: 1px solid #ff3b30; border-radius: 12px; color: #c00; font-family: sans-serif; }
@@ -79,6 +79,11 @@
               </select>
             </label>
           </header>
+          <div class="backup-reminder" id="backupReminder" role="status" hidden>
+            <span class="backup-reminder__text" id="backupReminderText"></span>
+            <button type="button" class="btn btn-primary backup-reminder__btn" id="btnReminderBackup">💾 지금 백업</button>
+            <button type="button" class="btn btn-secondary backup-reminder__btn" id="btnReminderSnooze">7일 후 다시 알림</button>
+          </div>
           <nav class="hub-tile-grid" id="hubNodes" aria-label="기능 메뉴"></nav>
         </section>
       </div>
@@ -159,11 +164,16 @@
 
             <div class="card panel-card">
               <h3>데이터 관리</h3>
+              <p class="card-desc" id="backupStatus">이 브라우저에서 백업한 기록이 없습니다.</p>
               <div class="btn-group">
                 <button type="button" class="btn btn-secondary" id="btnExport">💾 백업 다운로드</button>
                 <button type="button" class="btn btn-secondary" id="btnImport">📂 백업 복원</button>
                 <input type="file" id="importFileInput" accept=".json" hidden />
                 <button type="button" class="btn btn-danger" id="btnReset">🗑️ 전체 초기화</button>
+              </div>
+              <div class="undo-box" id="undoBox" hidden>
+                <p class="undo-box__text" id="undoText"></p>
+                <button type="button" class="btn btn-secondary" id="btnUndoData">↩️ 되돌리기</button>
               </div>
             </div>
           </div>
@@ -752,22 +762,27 @@
     <!-- 토스트 -->
     <div class="toast" id="toast" hidden></div>
 
-    <script src="storage.js"></script>
-    <script src="xlsx-import.js"></script>
-    <script src="seat-manager.js"></script>
-    <script src="group-manager.js"></script>
-    <script src="random-manager.js"></script>
-    <script src="game-manager.js"></script>
-    <script src="game-sounds.js"></script>
-    <script src="pinball-engine.js"></script>
-    <script src="scoreboard-manager.js"></script>
-    <script src="games.js"></script>
-    <script src="officers-vote.js"></script>
-    <script src="signature-maker.js"></script>
-    <script src="vendor/rhwptopdf/rhwptopdf.umd.js"></script>
-    <script src="document-convert.js"></script>
-    <script src="script.js"></script>
-    <script defer src="vendor/sortablejs/Sortable.min.js" onerror="ctLoadFromCdn('https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js')"></script>
-    <script defer src="vendor/sheetjs/xlsx.full.min.js" onerror="ctLoadFromCdn('https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js')"></script>
+    <script src="storage.js?v=20261028"></script>
+    <script src="xlsx-import.js?v=20261028"></script>
+    <script src="seat-manager.js?v=20261028"></script>
+    <script src="group-manager.js?v=20261028"></script>
+    <script src="random-manager.js?v=20261028"></script>
+    <script src="game-manager.js?v=20261028"></script>
+    <script src="game-sounds.js?v=20261028"></script>
+    <script src="pinball-engine.js?v=20261028"></script>
+    <script src="scoreboard-manager.js?v=20261028"></script>
+    <script src="games.js?v=20261028"></script>
+    <script src="officers-vote.js?v=20261028"></script>
+    <script src="signature-maker.js?v=20261028"></script>
+    <script src="vendor/rhwptopdf/rhwptopdf.umd.js?v=20261028"></script>
+    <script src="document-convert.js?v=20261028"></script>
+    <script src="seat-rules-panel.js?v=20261028"></script>
+    <script src="duties-panel.js?v=20261028"></script>
+    <script src="random-panel.js?v=20261028"></script>
+    <script src="timer-panel.js?v=20261028"></script>
+    <script src="print-output.js?v=20261028"></script>
+    <script src="script.js?v=20261028"></script>
+    <script defer src="vendor/sortablejs/Sortable.min.js?v=20261028" onerror="ctLoadFromCdn('https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js')"></script>
+    <script defer src="vendor/sheetjs/xlsx.full.min.js?v=20261028" onerror="ctLoadFromCdn('https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js')"></script>
   </body>
 </html>

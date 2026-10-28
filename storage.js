@@ -33,26 +33,108 @@ function ctSaveState(state) {
   localStorage.setItem(CT_STORAGE_KEY, JSON.stringify(state));
 }
 
+/* ── 백업 · 복원 · 되돌리기 ── */
+
+/** 이 브라우저의 백업 기록 — 학급 데이터와 따로 두어 복원·초기화에 휩쓸리지 않게 한다. */
+const CT_BACKUP_META_KEY = 'class-tools-backup-meta';
+/** 복원·초기화 직전 데이터 (한 번 되돌리기용) */
+const CT_UNDO_KEY = 'class-tools-v1-undo';
+const CT_BACKUP_REMIND_DAYS = 14;
+
+function ctReadJson(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function ctGetBackupMeta() {
+  const meta = ctReadJson(CT_BACKUP_META_KEY) || {};
+  return { lastBackupAt: meta.lastBackupAt || null, snoozeUntil: meta.snoozeUntil || null };
+}
+
+function ctSetBackupMeta(patch) {
+  try {
+    localStorage.setItem(CT_BACKUP_META_KEY, JSON.stringify({ ...ctGetBackupMeta(), ...patch }));
+  } catch { /* 저장 공간 부족 — 알림 기록만 못 남김 */ }
+}
+
+function ctSummarizeState(state) {
+  const classes = Array.isArray(state?.classes) ? state.classes : [];
+  return {
+    classes: classes.length,
+    students: classes.reduce((n, c) => n + (Array.isArray(c?.students) ? c.students.length : 0), 0),
+  };
+}
+
+/** 백업 알림을 띄울지: 학생 데이터가 있는데 오래 백업하지 않았고, '나중에'를 누른 기간이 지났을 때 */
+function ctBackupReminder(state, now = Date.now()) {
+  if (!ctSummarizeState(state).students) return null;
+  const meta = ctGetBackupMeta();
+  if (meta.snoozeUntil && now < Date.parse(meta.snoozeUntil)) return null;
+  if (!meta.lastBackupAt) return { never: true, days: null };
+  const days = Math.floor((now - Date.parse(meta.lastBackupAt)) / 86400000);
+  return days >= CT_BACKUP_REMIND_DAYS ? { never: false, days } : null;
+}
+
+function ctSnoozeBackupReminder(days = 7) {
+  ctSetBackupMeta({ snoozeUntil: new Date(Date.now() + days * 86400000).toISOString() });
+}
+
 function ctExportData() {
   const state = ctLoadState();
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const payload = { ...state, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = `class-tools-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  ctSetBackupMeta({ lastBackupAt: payload.exportedAt, snoozeUntil: null });
 }
 
-function ctImportData(file) {
+/** 클래스툴 백업 파일인지 검사. 문제가 있으면 사용자에게 보여 줄 문구를 담아 throw. */
+function ctValidateBackup(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('클래스툴 백업 파일이 아닙니다.');
+  }
+  if (!Array.isArray(data.classes) || !('activeClassId' in data || 'version' in data)) {
+    throw new Error('클래스툴 백업 파일이 아닙니다. (학급 정보가 없습니다)');
+  }
+  data.classes.forEach((cls, i) => {
+    if (!cls || typeof cls !== 'object' || !cls.id) {
+      throw new Error(`백업 파일이 손상되었습니다. (${i + 1}번째 학급 정보 오류)`);
+    }
+    const label = cls.name || `${i + 1}번째 학급`;
+    if (cls.students != null && !Array.isArray(cls.students)) {
+      throw new Error(`백업 파일이 손상되었습니다. (${label} 학생 명단 오류)`);
+    }
+    (cls.students || []).forEach((s) => {
+      if (!s || typeof s !== 'object' || !s.id) {
+        throw new Error(`백업 파일이 손상되었습니다. (${label} 학생 정보 오류)`);
+      }
+    });
+  });
+  return { ...ctSummarizeState(data), exportedAt: data.exportedAt || null };
+}
+
+/** 백업 파일을 읽고 검사만 한다 (저장하지 않음). */
+function ctReadBackupFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
+      let data;
       try {
-        const data = JSON.parse(e.target.result);
-        if (!data || typeof data !== 'object') throw new Error('잘못된 파일 형식입니다.');
-        ctSaveState({ ...CT_DEFAULT_STATE(), ...data });
-        resolve(data);
+        data = JSON.parse(e.target.result);
+      } catch {
+        reject(new Error('백업 파일을 읽을 수 없습니다. (JSON 형식이 아닙니다)'));
+        return;
+      }
+      try {
+        resolve({ data, summary: ctValidateBackup(data) });
       } catch (err) {
         reject(err);
       }
@@ -62,8 +144,48 @@ function ctImportData(file) {
   });
 }
 
+function ctSaveUndo(reason) {
+  const raw = localStorage.getItem(CT_STORAGE_KEY);
+  if (!raw) return true;
+  try {
+    localStorage.setItem(CT_UNDO_KEY, JSON.stringify({ at: new Date().toISOString(), reason, raw }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** @returns {{ at: string, reason: 'import'|'reset', summary: object } | null} */
+function ctGetUndo() {
+  const undo = ctReadJson(CT_UNDO_KEY);
+  if (!undo?.raw) return null;
+  let summary = { classes: 0, students: 0 };
+  try {
+    summary = ctSummarizeState(JSON.parse(undo.raw));
+  } catch { /* 요약만 실패 */ }
+  return { at: undo.at, reason: undo.reason, summary };
+}
+
+function ctRestoreUndo() {
+  const undo = ctReadJson(CT_UNDO_KEY);
+  if (!undo?.raw) return false;
+  localStorage.setItem(CT_STORAGE_KEY, undo.raw);
+  localStorage.removeItem(CT_UNDO_KEY);
+  return true;
+}
+
+/** 검사를 마친 백업 데이터를 적용. 현재 데이터는 되돌리기용으로 보관한다. */
+function ctApplyBackup(data) {
+  const undoSaved = ctSaveUndo('import');
+  const { exportedAt, ...rest } = data;
+  ctSaveState(ctNormalizeState({ ...CT_DEFAULT_STATE(), ...rest }));
+  return undoSaved;
+}
+
 function ctResetAll() {
+  const undoSaved = ctSaveUndo('reset');
   localStorage.removeItem(CT_STORAGE_KEY);
+  return undoSaved;
 }
 
 function ctNormalizeClass(cls) {
@@ -390,8 +512,9 @@ function ctGetStudentsForContext(classId, teachingClassId) {
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  CT_STORAGE_KEY, ctLoadState, ctSaveState, ctExportData, ctImportData,
-  ctResetAll, ctGenerateId, ctGetActiveClass, ctSetActiveClass,
+  CT_STORAGE_KEY, ctLoadState, ctSaveState, ctExportData,
+  ctResetAll, ctValidateBackup, ctReadBackupFile, ctApplyBackup, ctGetUndo, ctRestoreUndo,
+  ctGetBackupMeta, ctBackupReminder, ctSnoozeBackupReminder, ctSummarizeState, ctGenerateId, ctGetActiveClass, ctSetActiveClass,
   ctUpsertClass, ctDeleteClass, ctCreateClass, ctUpdateUser,
   ctSetStudents, ctGetMergedStudentsForTeachingClass, ctGetStudentsForContext,
   ctNormalizeClass, ctNormalizeState, ctBuildClassName,
