@@ -2,6 +2,8 @@
 
 학급 운영 도구 모음입니다. 브라우저에서 `index.html`을 열면 사용할 수 있습니다.
 
+드래그(SortableJS), 엑셀 업로드(SheetJS), 글꼴(Pretendard)은 `vendor/`에 포함되어 있어 인터넷이 끊겨도 동작합니다. 라이선스는 `vendor/NOTICE.md`를 참고하세요.
+
 ## 문서변환 (한글 → PDF)
 
 허브의 **문서변환**에서 `.hwp` / `.hwpx`를 PDF로 바꿉니다.

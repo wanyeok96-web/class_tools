@@ -2726,7 +2726,9 @@
 
     const base = document.baseURI || window.location.href;
     const printCss = new URL('print.css', base).href;
-    const fontCss = 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css';
+    const fontCss = window.location.protocol === 'file:'
+      ? 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css'
+      : new URL('vendor/pretendard/pretendard.css', base).href;
     const pageRule = landscape
       ? '@page { size: landscape; margin: 8mm; }'
       : '@page { size: portrait; margin: 12mm; }';

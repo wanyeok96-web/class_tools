@@ -6,8 +6,23 @@
     <meta name="color-scheme" content="light" />
     <meta name="description" content="학급 운영을 위한 모든 도구를 한 곳에 — 자리배치, 모둠편성, 랜덤게임, 발표순서, 임원투표, 당번관리, 타이머, 문서변환" />
     <title>Class Tools — 학급 운영 도구</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <link rel="stylesheet" href="vendor/pretendard/pretendard.css" />
     <link rel="stylesheet" href="style.css" />
+    <script>
+      /* vendor/ 파일을 읽지 못하면 같은 버전의 CDN에서 불러온다 */
+      function ctLoadFromCdn(url) {
+        var s = document.createElement('script');
+        s.src = url;
+        document.head.appendChild(s);
+      }
+      /* 파일로 직접 연 경우 브라우저가 로컬 글꼴 파일을 막을 수 있어 CDN 글꼴도 함께 요청 */
+      if (location.protocol === 'file:') {
+        var ctFont = document.createElement('link');
+        ctFont.rel = 'stylesheet';
+        ctFont.href = 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css';
+        document.head.appendChild(ctFont);
+      }
+    </script>
     <link rel="stylesheet" href="print.css" />
     <style>
       body { color: #1c1c1e; margin: 0; }
@@ -752,7 +767,7 @@
     <script src="vendor/rhwptopdf/rhwptopdf.umd.js"></script>
     <script src="document-convert.js"></script>
     <script src="script.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script defer src="vendor/sortablejs/Sortable.min.js" onerror="ctLoadFromCdn('https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js')"></script>
+    <script defer src="vendor/sheetjs/xlsx.full.min.js" onerror="ctLoadFromCdn('https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js')"></script>
   </body>
 </html>

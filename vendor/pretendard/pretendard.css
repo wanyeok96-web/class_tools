@@ -1,0 +1,8 @@
+/* Pretendard Variable v1.3.9 — 저장소에 포함된 파일만 사용 (없으면 시스템 글꼴로 대체) */
+@font-face {
+  font-family: 'Pretendard';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('./PretendardVariable.woff2') format('woff2');
+}

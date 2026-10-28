@@ -8,22 +8,19 @@ echo   Class Tools 문서변환기 준비 중...
 echo  ========================================
 echo.
 
-where py >nul 2>&1
-if %ERRORLEVEL%==0 (
-  set "PY=py -3"
-) else (
-  where python >nul 2>&1
-  if %ERRORLEVEL%==0 (
-    set "PY=python"
-  ) else (
-    echo [오류] Python이 설치되어 있지 않습니다.
-    echo https://www.python.org/downloads/ 에서 Python 3을 설치한 뒤
-    echo 다시 실행해주세요. ^(설치 시 Add to PATH 체크^)
-    echo.
-    pause
-    exit /b 1
-  )
+rem 실제로 실행되는 Python 3.8+ 만 인정 (Microsoft Store 바로가기 python.exe 제외)
+set "PY="
+py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" >nul 2>&1 && set "PY=py -3"
+if not defined PY python -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" >nul 2>&1 && set "PY=python"
+if not defined PY (
+  echo [오류] Python 3.8 이상이 설치되어 있지 않습니다.
+  echo https://www.python.org/downloads/ 에서 Python 3을 설치한 뒤
+  echo 다시 실행해주세요. ^(설치 시 Add to PATH 체크^)
+  echo.
+  pause
+  exit /b 1
 )
+echo Python: %PY%
 
 if not exist ".venv\Scripts\python.exe" (
   echo 가상환경을 만드는 중...

@@ -13,3 +13,14 @@
 주소: `http://127.0.0.1:19531`
 
 변환기가 꺼져 있으면 브라우저 WASM으로 폴백합니다. (서식이 달라질 수 있음)
+
+## 보안
+
+변환기는 아래 페이지에서 온 요청만 받습니다. 다른 웹사이트가 이 PC의 한글 프로그램을 몰래 쓰지 못하게 하기 위함입니다.
+
+- `https://wanyeok96-web.github.io` (배포 주소)
+- `index.html`을 파일로 직접 연 경우
+- `localhost` / `127.0.0.1` 주소
+
+다른 주소에 배포했다면 `CT_ALLOWED_ORIGINS` 환경 변수에 쉼표로 구분해 추가하세요.
+예: `set CT_ALLOWED_ORIGINS=https://example.com` 후 `실행.bat`

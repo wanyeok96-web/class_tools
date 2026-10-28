@@ -7,18 +7,29 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 HOST = "127.0.0.1"
 PORT = 19531
 ALLOWED_EXT = {".hwp", ".hwpx"}
 MAX_BYTES = 80 * 1024 * 1024  # 80MB
+
+# 변환을 요청할 수 있는 페이지 출처. "null"은 index.html을 파일로 직접 연 경우.
+# 다른 주소에 배포했다면 CT_ALLOWED_ORIGINS 환경 변수(쉼표 구분)로 추가합니다.
+ALLOWED_ORIGINS = {
+    "https://wanyeok96-web.github.io",
+    "null",
+} | {o.strip().rstrip("/") for o in os.environ.get("CT_ALLOWED_ORIGINS", "").split(",") if o.strip()}
+LOCAL_ORIGIN_RE = re.compile(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$")
+# DNS 리바인딩 방지: 이 서버를 가리키는 Host 헤더만 허용
+ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 
 _lock = threading.Lock()
 _hwp = None
@@ -158,13 +169,32 @@ def convert_bytes(filename: str, data: bytes) -> bytes:
             except OSError:
                 pass
 
+def _origin_allowed(origin: str | None) -> bool:
+    # Origin이 없으면 브라우저가 아닌 같은 PC의 프로그램 요청
+    if not origin:
+        return True
+    origin = origin.rstrip("/")
+    return origin in ALLOWED_ORIGINS or bool(LOCAL_ORIGIN_RE.match(origin))
+
+
+def _host_allowed(handler: BaseHTTPRequestHandler) -> bool:
+    return (handler.headers.get("Host") or "").lower() in ALLOWED_HOSTS
+
+
 def _cors(handler: BaseHTTPRequestHandler) -> None:
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    origin = handler.headers.get("Origin")
+    handler.send_header("Vary", "Origin")
+    if not origin or not _origin_allowed(origin):
+        return
+    handler.send_header("Access-Control-Allow-Origin", origin)
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
     handler.send_header(
         "Access-Control-Allow-Headers",
         "Content-Type, X-Filename, X-Requested-With",
     )
+    handler.send_header("Access-Control-Expose-Headers", "X-Pdf-Filename, Content-Disposition")
+    if handler.headers.get("Access-Control-Request-Private-Network") == "true":
+        handler.send_header("Access-Control-Allow-Private-Network", "true")
 
 
 def _json(handler: BaseHTTPRequestHandler, code: int, payload: dict) -> None:
@@ -183,12 +213,34 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         _log("%s - %s" % (self.address_string(), fmt % args))
 
+    def _reject_foreign(self) -> bool:
+        """허용되지 않은 출처·Host의 요청이면 403으로 응답하고 True를 돌려준다."""
+        origin = self.headers.get("Origin")
+        if _host_allowed(self) and _origin_allowed(origin):
+            return False
+        _log(f"[BLOCK] origin={origin!r} host={self.headers.get('Host')!r} {self.command} {self.path}")
+        if self.command == "POST":
+            # 본문을 비워 두어야 연결이 깔끔하게 닫힌다
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if 0 < length <= MAX_BYTES:
+                    self.rfile.read(length)
+            except (ValueError, OSError):
+                pass
+        _json(self, 403, {"ok": False, "error": "허용되지 않은 출처의 요청입니다."})
+        return True
+
     def do_OPTIONS(self) -> None:
+        if self._reject_foreign():
+            return
         self.send_response(204)
         _cors(self)
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def do_GET(self) -> None:
+        if self._reject_foreign():
+            return
         if self.path.rstrip("/") == "/health":
             hwp = _init_hwp()
             _json(
@@ -205,6 +257,8 @@ class Handler(BaseHTTPRequestHandler):
         _json(self, 404, {"ok": False, "error": "not found"})
 
     def do_POST(self) -> None:
+        if self._reject_foreign():
+            return
         if self.path.rstrip("/") != "/convert":
             _json(self, 404, {"ok": False, "error": "not found"})
             return
@@ -227,23 +281,24 @@ class Handler(BaseHTTPRequestHandler):
         data = self.rfile.read(length)
         try:
             pdf = convert_bytes(filename, data)
-            out_name = Path(filename).stem + ".pdf"
-            self.send_response(200)
-            _cors(self)
-            self.send_header("Content-Type", "application/pdf")
-            self.send_header(
-                "Content-Disposition",
-                f"attachment; filename*=UTF-8''{Path(out_name).name}",
-            )
-            self.send_header("X-Pdf-Filename", Path(out_name).name)
-            self.send_header("Content-Length", str(len(pdf)))
-            self.end_headers()
-            self.wfile.write(pdf)
-            _log(f"[OK] {filename} → {out_name} ({len(pdf)} bytes)")
         except Exception as exc:
             _log(f"[ERR] {filename}: {exc}")
             traceback.print_exc()
             _json(self, 500, {"ok": False, "error": str(exc)})
+            return
+
+        out_name = Path(filename).stem + ".pdf"
+        # HTTP 헤더는 latin-1만 허용하므로 한글 파일명은 퍼센트 인코딩
+        encoded_name = quote(out_name)
+        self.send_response(200)
+        _cors(self)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{encoded_name}")
+        self.send_header("X-Pdf-Filename", encoded_name)
+        self.send_header("Content-Length", str(len(pdf)))
+        self.end_headers()
+        self.wfile.write(pdf)
+        _log(f"[OK] {filename} → {out_name} ({len(pdf)} bytes)")
 
 
 def main() -> int:
