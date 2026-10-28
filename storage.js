@@ -18,19 +18,48 @@ function ctGenerateId(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** 읽을 수 없게 된 저장 데이터를 덮어쓰기 전에 옮겨 두는 곳 (수동 복구용) */
+const CT_CORRUPT_KEY = 'class-tools-v1-corrupt';
+
 function ctLoadState() {
+  let raw = null;
   try {
-    const raw = localStorage.getItem(CT_STORAGE_KEY);
+    raw = localStorage.getItem(CT_STORAGE_KEY);
     if (!raw) return CT_DEFAULT_STATE();
     const parsed = JSON.parse(raw);
     return ctNormalizeState({ ...CT_DEFAULT_STATE(), ...parsed });
   } catch {
+    if (raw) {
+      try {
+        if (localStorage.getItem(CT_CORRUPT_KEY) === null) localStorage.setItem(CT_CORRUPT_KEY, raw);
+      } catch { /* 공간 부족 — 보존 실패 */ }
+    }
     return CT_DEFAULT_STATE();
   }
 }
 
+/**
+ * @returns {boolean} 저장 성공 여부. 실패하면 window에 'ct-save-failed' 이벤트를 보낸다.
+ */
 function ctSaveState(state) {
-  localStorage.setItem(CT_STORAGE_KEY, JSON.stringify(state));
+  const json = JSON.stringify(state);
+  try {
+    localStorage.setItem(CT_STORAGE_KEY, json);
+    return true;
+  } catch (err) {
+    // 공간이 부족하면 되돌리기용 사본을 비우고 한 번 더 시도 (현재 데이터 저장이 우선)
+    if (localStorage.getItem(CT_UNDO_KEY) !== null) {
+      localStorage.removeItem(CT_UNDO_KEY);
+      try {
+        localStorage.setItem(CT_STORAGE_KEY, json);
+        return true;
+      } catch { /* 아래에서 알림 */ }
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ct-save-failed', { detail: err }));
+    }
+    return false;
+  }
 }
 
 /* ── 백업 · 복원 · 되돌리기 ── */
@@ -74,8 +103,9 @@ function ctBackupReminder(state, now = Date.now()) {
   if (!ctSummarizeState(state).students) return null;
   const meta = ctGetBackupMeta();
   if (meta.snoozeUntil && now < Date.parse(meta.snoozeUntil)) return null;
-  if (!meta.lastBackupAt) return { never: true, days: null };
-  const days = Math.floor((now - Date.parse(meta.lastBackupAt)) / 86400000);
+  const last = Date.parse(meta.lastBackupAt || '');
+  if (!Number.isFinite(last)) return { never: true, days: null };
+  const days = Math.floor((now - last) / 86400000);
   return days >= CT_BACKUP_REMIND_DAYS ? { never: false, days } : null;
 }
 
@@ -88,9 +118,11 @@ function ctExportData() {
   const payload = { ...state, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
   const a = document.createElement('a');
   a.href = url;
-  a.download = `class-tools-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `class-tools-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
   a.click();
   URL.revokeObjectURL(url);
   ctSetBackupMeta({ lastBackupAt: payload.exportedAt, snoozeUntil: null });
@@ -151,6 +183,8 @@ function ctSaveUndo(reason) {
     localStorage.setItem(CT_UNDO_KEY, JSON.stringify({ at: new Date().toISOString(), reason, raw }));
     return true;
   } catch {
+    // 이전 작업의 사본이 남아 있으면 '최근 상태'로 오해할 수 있으므로 지운다
+    localStorage.removeItem(CT_UNDO_KEY);
     return false;
   }
 }
@@ -169,23 +203,34 @@ function ctGetUndo() {
 function ctRestoreUndo() {
   const undo = ctReadJson(CT_UNDO_KEY);
   if (!undo?.raw) return false;
-  localStorage.setItem(CT_STORAGE_KEY, undo.raw);
-  localStorage.removeItem(CT_UNDO_KEY);
-  return true;
+  try {
+    // 사본을 먼저 비워 공간을 확보한 뒤 되살린다 (실패하면 사본을 원래대로 둔다)
+    localStorage.removeItem(CT_UNDO_KEY);
+    localStorage.setItem(CT_STORAGE_KEY, undo.raw);
+    return true;
+  } catch {
+    try { localStorage.setItem(CT_UNDO_KEY, JSON.stringify(undo)); } catch { /* 공간 부족 */ }
+    return false;
+  }
 }
 
-/** 검사를 마친 백업 데이터를 적용. 현재 데이터는 되돌리기용으로 보관한다. */
+/**
+ * 검사를 마친 백업 데이터를 적용. 현재 데이터는 되돌리기용으로 보관한다.
+ * @returns {{ applied: boolean, undoSaved: boolean }}
+ */
 function ctApplyBackup(data) {
-  const undoSaved = ctSaveUndo('import');
-  const { exportedAt, ...rest } = data;
-  ctSaveState(ctNormalizeState({ ...CT_DEFAULT_STATE(), ...rest }));
-  return undoSaved;
+  ctSaveUndo('import');
+  const rest = { ...data };
+  delete rest.exportedAt;
+  const applied = ctSaveState(ctNormalizeState({ ...CT_DEFAULT_STATE(), ...rest }));
+  return { applied, undoSaved: applied && ctGetUndo() !== null };
 }
 
+/** @returns {{ undoSaved: boolean }} */
 function ctResetAll() {
   const undoSaved = ctSaveUndo('reset');
   localStorage.removeItem(CT_STORAGE_KEY);
-  return undoSaved;
+  return { undoSaved };
 }
 
 function ctNormalizeClass(cls) {

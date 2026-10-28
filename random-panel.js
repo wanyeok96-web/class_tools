@@ -12,8 +12,12 @@ function ctCreateRandomPanel(app) {
   const showModal = (...args) => app.showModal(...args);
   const showToast = (...args) => app.showToast(...args);
 
+  /** style.css .roulette-wheel.is-spinning transition 시간과 맞춘다 */
+  const ROULETTE_SPIN_MS = 4800;
   let rouletteMode = 'students';
   let rouletteSpinning = false;
+  /** 회전마다 증가 — 취소된 회전의 종료 처리를 무시하기 위함 */
+  let rouletteSpinToken = 0;
   const rouletteState = {
     students: { excluded: new Set(), history: [], rotation: 0 },
     custom: { excluded: new Set(), history: [], rotation: 0 },
@@ -26,6 +30,7 @@ function ctCreateRandomPanel(app) {
   function setRouletteMode(mode) {
     const next = mode === 'custom' ? 'custom' : 'students';
     if (rouletteMode === next) return;
+    cancelRouletteSpin();
     rouletteMode = next;
     renderRoulettePanel();
     renderRouletteWinner(null);
@@ -203,6 +208,7 @@ function ctCreateRandomPanel(app) {
     const history = getRouletteModeState().history;
     if (!history.length) {
       wrap.hidden = true;
+      list.innerHTML = '';
       return;
     }
     wrap.hidden = false;
@@ -271,8 +277,13 @@ function ctCreateRandomPanel(app) {
       });
     });
 
+    const token = ++rouletteSpinToken;
+    let fallbackTimer = null;
     const onEnd = () => {
       wheels[0].removeEventListener('transitionend', onEnd);
+      clearTimeout(fallbackTimer);
+      // 다시 채우기·모드 변경 등으로 취소된 회전이면 결과를 반영하지 않는다
+      if (token !== rouletteSpinToken) return;
       modeState.rotation = targetRotation;
       rouletteSpinning = false;
       wheels.forEach((wheel) => wheel.classList.remove('is-spinning'));
@@ -300,14 +311,28 @@ function ctCreateRandomPanel(app) {
     };
 
     wheels[0].addEventListener('transitionend', onEnd);
+    // 탭이 가려져 있거나 바퀴가 다시 그려지면 transitionend가 오지 않으므로 시간으로도 마무리
+    fallbackTimer = setTimeout(onEnd, ROULETTE_SPIN_MS + 700);
+  }
+
+  /** 진행 중인 회전을 결과 없이 멈춘다 */
+  function cancelRouletteSpin() {
+    rouletteSpinToken += 1;
+    rouletteSpinning = false;
+    [$('#rouletteWheel'), $('#fsRouletteWheel')].filter(Boolean)
+      .forEach((wheel) => wheel.classList.remove('is-spinning'));
+    const spinBtn = $('#btnSpinRoulette');
+    const fsSpinBtn = $('#btnFsSpin');
+    if (spinBtn) spinBtn.disabled = false;
+    if (fsSpinBtn) fsSpinBtn.disabled = false;
   }
 
   function resetRoulette() {
+    cancelRouletteSpin();
     const modeState = getRouletteModeState();
     modeState.excluded.clear();
     modeState.history = [];
     modeState.rotation = 0;
-    rouletteSpinning = false;
     renderRouletteWheel($('#rouletteWheel'));
     renderRouletteWheel($('#fsRouletteWheel'));
     renderRouletteWinner(null);
@@ -365,7 +390,7 @@ function ctCreateRandomPanel(app) {
         ctSavePinballPool(classId, students.map((s) => s.id));
       }
     }
-    CTGames?.showLobby();
+    window.CTGames?.showLobby();
   }
 
   function openGameWinnerFullscreen(title, winnersHtml) {
@@ -397,6 +422,7 @@ function ctCreateRandomPanel(app) {
       getClassId: () => app.state.activeClassId,
       getTreasureRewards: () => app.state.treasureRewards || [],
       onRoulettePoolChange: () => {
+        if (rouletteMode === 'students') cancelRouletteSpin();
         rouletteState.students.excluded.clear();
         rouletteState.students.rotation = 0;
         renderRoulettePanel();
@@ -406,6 +432,7 @@ function ctCreateRandomPanel(app) {
         setRouletteMode(mode);
       },
       onRouletteCustomChange: () => {
+        if (rouletteMode === 'custom') cancelRouletteSpin();
         rouletteState.custom.excluded.clear();
         rouletteState.custom.rotation = 0;
         renderRoulettePanel();
@@ -415,6 +442,7 @@ function ctCreateRandomPanel(app) {
         }
       },
       renderRoulette: () => {
+        cancelRouletteSpin();
         const classId = app.state.activeClassId;
         if (classId) rouletteMode = ctLoadRouletteMode(classId);
         renderRoulettePanel();

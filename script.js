@@ -107,12 +107,17 @@
   } = printOutput;
 
   /* ── 유틸 ── */
-  function showToast(msg) {
+  /** options.important: 표시되는 동안 일반 알림이 덮어쓰지 못한다 (저장 실패 경고 등) */
+  function showToast(msg, options = {}) {
+    const now = Date.now();
+    if (!options.important && now < (showToast._holdUntil || 0)) return;
     const el = $('#toast');
     el.textContent = msg;
     el.hidden = false;
     clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => { el.hidden = true; }, 2800);
+    const duration = Math.min(8000, Math.max(2800, String(msg).length * 80));
+    showToast._holdUntil = options.important ? now + duration : 0;
+    showToast._t = setTimeout(() => { el.hidden = true; }, duration);
   }
   window.ctShowToast = showToast;
 
@@ -369,7 +374,7 @@
     state.activeClassId = classId;
     seatContext.classId = classId;
     saveAndRefresh();
-    CTGames?.onClassChange();
+    window.CTGames?.onClassChange?.();
     if (currentPanel === 'presentation') {
       presentationViewActive = false;
       destroyPresentationSortables();
@@ -467,10 +472,16 @@
       : `💡 마지막 백업 후 ${reminder.days}일이 지났습니다. 학급 데이터를 백업해 두세요.`;
   }
 
+  /** 복원·초기화·되돌리기로 저장 데이터가 통째로 바뀐 뒤 화면과 다른 모듈을 새 데이터에 맞춘다 */
   function reloadStateFromStorage() {
     state = ctLoadState();
     ensureActiveClass();
     seatContext = { classId: state.activeClassId };
+    presentationViewActive = false;
+    destroyPresentationSortables();
+    resetSeatRuleAlert();
+    window.CTGames?.onClassChange?.();
+    window.CTOfficers?.onClassChange?.();
     renderOffice();
     refreshHeader();
     renderHeroWelcome();
@@ -489,10 +500,11 @@
     );
     $('#modalImportCancel').onclick = closeModal;
     $('#modalImportOk').onclick = () => {
-      const undoSaved = ctApplyBackup(data);
+      const { applied, undoSaved } = ctApplyBackup(data);
       closeModal();
       reloadStateFromStorage();
-      showToast(undoSaved ? '데이터가 복원되었습니다.' : '복원했습니다. (저장 공간이 부족해 되돌리기는 준비하지 못했습니다)');
+      if (!applied) showToast('저장 공간이 부족해 복원하지 못했습니다. 현재 데이터는 그대로입니다.');
+      else showToast(undoSaved ? '데이터가 복원되었습니다.' : '복원했습니다. (저장 공간이 부족해 되돌리기는 준비하지 못했습니다)');
     };
   }
 
@@ -507,7 +519,7 @@
     );
     $('#modalResetCancel').onclick = closeModal;
     $('#modalResetOk').onclick = () => {
-      const undoSaved = ctResetAll();
+      const { undoSaved } = ctResetAll();
       closeModal();
       reloadStateFromStorage();
       showToast(undoSaved ? '초기화되었습니다.' : '초기화했습니다. (저장 공간이 부족해 되돌리기는 준비하지 못했습니다)');
@@ -527,10 +539,10 @@
     );
     $('#modalUndoCancel').onclick = closeModal;
     $('#modalUndoOk').onclick = () => {
-      ctRestoreUndo();
+      const restored = ctRestoreUndo();
       closeModal();
       reloadStateFromStorage();
-      showToast('이전 데이터로 되돌렸습니다.');
+      showToast(restored ? '이전 데이터로 되돌렸습니다.' : '저장 공간이 부족해 되돌리지 못했습니다.');
     };
   }
 
@@ -1849,6 +1861,12 @@
       if (typeof ctLoadState !== 'function') {
         throw new Error('storage.js가 로드되지 않았습니다. index.html과 같은 폴더에서 열어주세요.');
       }
+      let lastSaveFailAt = 0;
+      window.addEventListener('ct-save-failed', () => {
+        if (Date.now() - lastSaveFailAt < 10000) return;
+        lastSaveFailAt = Date.now();
+        showToast('⚠️ 브라우저 저장 공간이 부족해 변경 내용을 저장하지 못했습니다. 관리실에서 백업한 뒤 쓰지 않는 학급을 정리해 주세요.', { important: true });
+      });
       state = ctLoadState();
       ensureActiveClass();
       if (state.activeClassId) {

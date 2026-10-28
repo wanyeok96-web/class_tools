@@ -28,10 +28,13 @@ function ctCreatePrintOutput(app) {
     document.body.appendChild(iframe);
 
     const base = document.baseURI || window.location.href;
-    const printCss = new URL('print.css', base).href;
+    // index.html이 불러온 주소(?v= 포함)를 그대로 써서 캐시된 예전 파일과 섞이지 않게 한다
+    const pageCss = (name) => document.querySelector(`link[rel="stylesheet"][href^="${name}"]`)?.href
+      || new URL(name, base).href;
+    const printCss = pageCss('print.css');
     const fontCss = window.location.protocol === 'file:'
       ? 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css'
-      : new URL('vendor/pretendard/pretendard.css', base).href;
+      : pageCss('vendor/pretendard/pretendard.css');
     const pageRule = landscape
       ? '@page { size: landscape; margin: 8mm; }'
       : '@page { size: portrait; margin: 12mm; }';
