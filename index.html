@@ -187,10 +187,8 @@
                   <div class="checkbox-group">
                     <label class="checkbox"><input type="checkbox" id="optRandom" checked /> 랜덤 배치</label>
                     <label class="checkbox"><input type="checkbox" id="optGender" /> 성별 고려</label>
-                    <label class="checkbox"><input type="checkbox" id="optPrevious" /> 이전 자리 고려</label>
                   </div>
-                  <button type="button" class="btn btn-secondary btn-block" id="btnOpenFrontRowRequests">🪑 앞자리 희망 학생</button>
-                  <button type="button" class="btn btn-secondary btn-block" id="btnOpenSeparation">🔒 분리 규칙 설정</button>
+                  <button type="button" class="btn btn-secondary btn-block" id="btnOpenSeatRules">⚙️ 규칙 설정</button>
                   <button type="button" class="btn btn-primary btn-block" id="btnAutoAssign">자동 배치 실행</button>
                 </div>
 
@@ -224,6 +222,7 @@
             </aside>
             <div class="seat-main">
               <div class="seat-context-bar" id="seatContextBar"></div>
+              <div class="seat-rule-alert" id="seatRuleAlert" role="status" hidden></div>
               <div class="seat-layout">
                 <div class="teacher-desk" id="teacherDesk">교탁</div>
                 <div class="seat-grid" id="seatGrid"></div>

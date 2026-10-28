@@ -94,13 +94,130 @@ function ctNormalizeClass(cls) {
       numberAssignDirection: dir,
     };
   }
-  if (!Array.isArray(cls.frontRowRequestIds)) {
-    cls.frontRowRequestIds = [];
-  } else {
-    const studentIds = new Set((cls.students || []).map((s) => s.id));
-    cls.frontRowRequestIds = cls.frontRowRequestIds.filter((id) => studentIds.has(id));
+  const studentIds = new Set((cls.students || []).map((s) => s.id));
+  let rules = Array.isArray(cls.seatRules) ? cls.seatRules : [];
+  if (Array.isArray(cls.separationRules) && cls.separationRules.length) {
+    rules = rules.concat(cls.separationRules.map((r, i) => ctCreateSeatRule('separate', {
+      id: `${cls.id}-mig-sep-${i}`,
+      studentA: r.studentA || '',
+      studentB: r.studentB || '',
+      noAdjacent: !!r.noAdjacent,
+      noFrontBack: !!r.noFrontBack,
+      noDiagonal: !!r.noDiagonal,
+    })));
   }
+  const frontIds = (Array.isArray(cls.frontRowRequestIds) ? cls.frontRowRequestIds : [])
+    .filter((id) => studentIds.has(id));
+  if (frontIds.length) {
+    rules.push(ctCreateFrontRowRule(cls.seatLayout, {
+      id: `${cls.id}-mig-front`,
+      studentIds: frontIds,
+      memo: '앞자리 희망',
+    }));
+  }
+  delete cls.separationRules;
+  delete cls.frontRowRequestIds;
+  cls.seatRules = rules.map((r) => ctNormalizeSeatRule(r, studentIds)).filter(Boolean);
+  if (!cls.seatConfirmed || !Array.isArray(cls.seatConfirmed.seats)) cls.seatConfirmed = null;
   return cls;
+}
+
+const CT_SEAT_RULE_TYPE_IDS = [
+  'rowRange', 'colRange', 'allowSeats', 'fixedSeat', 'avoidSeats', 'separate', 'pair', 'avoidPrevious',
+];
+
+const CT_SEAT_RULE_DEFAULTS = {
+  rowRange: () => ({ studentIds: [], from: 1, to: 1 }),
+  colRange: () => ({ studentIds: [], from: 1, to: 1 }),
+  allowSeats: () => ({ studentIds: [], seatKeys: [] }),
+  avoidSeats: () => ({ studentIds: [], seatKeys: [] }),
+  fixedSeat: () => ({ studentId: '', seatKey: '' }),
+  separate: () => ({ studentA: '', studentB: '', noAdjacent: true, noFrontBack: false, noDiagonal: false }),
+  pair: () => ({ studentA: '', studentB: '', direction: 'side' }),
+  avoidPrevious: () => ({ target: 'all', studentIds: [], sameSeat: true, samePartner: true, minRowShift: 0 }),
+};
+
+function ctCreateSeatRule(type, fields = {}) {
+  return {
+    id: ctGenerateId('rule'),
+    type,
+    enabled: true,
+    needsReview: false,
+    memo: '',
+    ...CT_SEAT_RULE_DEFAULTS[type](),
+    ...fields,
+  };
+}
+
+/** 교탁 쪽 맨 앞줄 — 교탁이 왼쪽·오른쪽이면 분단(열) 규칙으로 만든다. */
+function ctCreateFrontRowRule(layout, fields = {}) {
+  const pos = layout?.teacherPosition || 'front';
+  const rows = layout?.rows || 5;
+  const cols = layout?.cols || 6;
+  if (pos === 'left' || pos === 'right') {
+    const col = pos === 'left' ? 1 : cols;
+    return ctCreateSeatRule('colRange', { from: col, to: col, ...fields });
+  }
+  const row = pos === 'back' ? rows : 1;
+  return ctCreateSeatRule('rowRange', { from: row, to: row, ...fields });
+}
+
+function ctNormalizeSeatRule(rule, studentIds) {
+  if (!rule || !CT_SEAT_RULE_TYPE_IDS.includes(rule.type)) return null;
+  const r = { ...ctCreateSeatRule(rule.type), ...rule };
+  if (!r.id) r.id = ctGenerateId('rule');
+  r.enabled = r.enabled !== false;
+  r.needsReview = !!r.needsReview;
+  r.memo = String(r.memo ?? '').slice(0, 40);
+  let lostTarget = false;
+
+  if ('studentIds' in r) {
+    const before = Array.isArray(r.studentIds) ? r.studentIds : [];
+    r.studentIds = [...new Set(before.filter((id) => studentIds.has(id)))];
+    const needsList = r.type !== 'avoidPrevious' || r.target === 'selected';
+    if (needsList && before.length && !r.studentIds.length) lostTarget = true;
+  }
+  ['studentId', 'studentA', 'studentB'].forEach((field) => {
+    if (!(field in r)) return;
+    r[field] = String(r[field] ?? '');
+    if (r[field] && !studentIds.has(r[field])) {
+      r[field] = '';
+      lostTarget = true;
+    }
+  });
+  if (lostTarget) r.enabled = false;
+
+  const toInt = (v, min, fallback) => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? Math.max(min, n) : fallback;
+  };
+  if ('from' in r) {
+    r.from = toInt(r.from, 1, 1);
+    r.to = toInt(r.to, 1, r.from);
+    if (r.to < r.from) [r.from, r.to] = [r.to, r.from];
+  }
+  if ('seatKeys' in r) {
+    r.seatKeys = [...new Set((Array.isArray(r.seatKeys) ? r.seatKeys : [])
+      .map(String).filter((k) => /^\d+-\d+$/.test(k)))];
+  }
+  if ('seatKey' in r) {
+    r.seatKey = /^\d+-\d+$/.test(String(r.seatKey ?? '')) ? String(r.seatKey) : '';
+  }
+  if (r.type === 'separate') {
+    r.noAdjacent = !!r.noAdjacent;
+    r.noFrontBack = !!r.noFrontBack;
+    r.noDiagonal = !!r.noDiagonal;
+  }
+  if (r.type === 'pair') {
+    r.direction = r.direction === 'frontBack' ? 'frontBack' : 'side';
+  }
+  if (r.type === 'avoidPrevious') {
+    r.target = r.target === 'selected' ? 'selected' : 'all';
+    r.sameSeat = !!r.sameSeat;
+    r.samePartner = !!r.samePartner;
+    r.minRowShift = toInt(r.minRowShift, 0, 0);
+  }
+  return r;
 }
 
 function ctNormalizeState(state) {
@@ -187,8 +304,8 @@ function ctCreateClass({ grade, classLabel, classNumber, name }) {
     name: name || ctBuildClassName(grade, label),
     students: [],
     seatLayout: null,
-    separationRules: [],
-    frontRowRequestIds: [],
+    seatRules: [],
+    seatConfirmed: null,
     groupResult: null,
     presentationOrder: [],
     presentationByGroup: [],
@@ -278,4 +395,5 @@ if (typeof module !== 'undefined') module.exports = {
   ctUpsertClass, ctDeleteClass, ctCreateClass, ctUpdateUser,
   ctSetStudents, ctGetMergedStudentsForTeachingClass, ctGetStudentsForContext,
   ctNormalizeClass, ctNormalizeState, ctBuildClassName,
+  CT_SEAT_RULE_TYPE_IDS, ctCreateSeatRule, ctCreateFrontRowRule, ctNormalizeSeatRule,
 };
