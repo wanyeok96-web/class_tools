@@ -3,6 +3,7 @@
 학급 운영 도구 모음입니다. 브라우저에서 `index.html`을 열면 사용할 수 있습니다.
 
 드래그(SortableJS), 엑셀 업로드(SheetJS), 글꼴(Pretendard)은 `vendor/`에 포함되어 있어 인터넷이 끊겨도 동작합니다. 라이선스는 `vendor/NOTICE.md`를 참고하세요.
+서명·도장의 명조·붓글씨·손글씨·굵은 제목체 서체(나눔·Black Han Sans, OFL)는 Google Fonts에서 쓰는 글자만 받아 오며, 인터넷이 없으면 비슷한 글꼴로 대신 그립니다.
 
 ## 데이터
 

@@ -6,8 +6,8 @@
     <meta name="color-scheme" content="light" />
     <meta name="description" content="학급 운영을 위한 모든 도구를 한 곳에 — 자리배치, 모둠편성, 랜덤게임, 발표순서, 임원투표, 당번관리, 타이머, 문서변환" />
     <title>Class Tools — 학급 운영 도구</title>
-    <link rel="stylesheet" href="vendor/pretendard/pretendard.css?v=202610281346" />
-    <link rel="stylesheet" href="style.css?v=202610281346" />
+    <link rel="stylesheet" href="vendor/pretendard/pretendard.css?v=202610291011" />
+    <link rel="stylesheet" href="style.css?v=202610291011" />
     <script>
       /* vendor/ 파일을 읽지 못하면 같은 버전의 CDN에서 불러온다 */
       function ctLoadFromCdn(url) {
@@ -23,7 +23,7 @@
         document.head.appendChild(ctFont);
       }
     </script>
-    <link rel="stylesheet" href="print.css?v=202610281346" />
+    <link rel="stylesheet" href="print.css?v=202610291011" />
     <style>
       body { color: #1c1c1e; margin: 0; }
       #bootError { display: none; margin: 16px; padding: 16px; background: #fff3f3; border: 1px solid #ff3b30; border-radius: 12px; color: #c00; font-family: sans-serif; }
@@ -714,6 +714,11 @@
                   <input type="checkbox" id="signatureStampBorder" checked /> 원형 테두리
                 </label>
               </div>
+              <div class="signature-stamp-font-field">
+                <span class="field-label">서체</span>
+                <div class="signature-stamp-fonts" id="signatureStampFonts" role="group" aria-label="도장 서체"></div>
+                <p class="field-hint signature-font-hint" id="signatureFontHint" hidden></p>
+              </div>
               <div class="signature-stamp-colors" role="group" aria-label="도장 색상">
                 <button type="button" class="signature-color-chip is-active" data-color="#C41E3A" title="인주" style="--chip-color:#C41E3A">인주</button>
                 <button type="button" class="signature-color-chip" data-color="#1a1a1a" title="검정" style="--chip-color:#1a1a1a">검정</button>
@@ -762,27 +767,27 @@
     <!-- 토스트 -->
     <div class="toast" id="toast" hidden></div>
 
-    <script src="storage.js?v=202610281346"></script>
-    <script src="xlsx-import.js?v=202610281346"></script>
-    <script src="seat-manager.js?v=202610281346"></script>
-    <script src="group-manager.js?v=202610281346"></script>
-    <script src="random-manager.js?v=202610281346"></script>
-    <script src="game-manager.js?v=202610281346"></script>
-    <script src="game-sounds.js?v=202610281346"></script>
-    <script src="pinball-engine.js?v=202610281346"></script>
-    <script src="scoreboard-manager.js?v=202610281346"></script>
-    <script src="games.js?v=202610281346"></script>
-    <script src="officers-vote.js?v=202610281346"></script>
-    <script src="signature-maker.js?v=202610281346"></script>
-    <script src="vendor/rhwptopdf/rhwptopdf.umd.js?v=202610281346"></script>
-    <script src="document-convert.js?v=202610281346"></script>
-    <script src="seat-rules-panel.js?v=202610281346"></script>
-    <script src="duties-panel.js?v=202610281346"></script>
-    <script src="random-panel.js?v=202610281346"></script>
-    <script src="timer-panel.js?v=202610281346"></script>
-    <script src="print-output.js?v=202610281346"></script>
-    <script src="script.js?v=202610281346"></script>
-    <script defer src="vendor/sortablejs/Sortable.min.js?v=202610281346" onerror="ctLoadFromCdn('https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js')"></script>
-    <script defer src="vendor/sheetjs/xlsx.full.min.js?v=202610281346" onerror="ctLoadFromCdn('https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js')"></script>
+    <script src="storage.js?v=202610291011"></script>
+    <script src="xlsx-import.js?v=202610291011"></script>
+    <script src="seat-manager.js?v=202610291011"></script>
+    <script src="group-manager.js?v=202610291011"></script>
+    <script src="random-manager.js?v=202610291011"></script>
+    <script src="game-manager.js?v=202610291011"></script>
+    <script src="game-sounds.js?v=202610291011"></script>
+    <script src="pinball-engine.js?v=202610291011"></script>
+    <script src="scoreboard-manager.js?v=202610291011"></script>
+    <script src="games.js?v=202610291011"></script>
+    <script src="officers-vote.js?v=202610291011"></script>
+    <script src="signature-maker.js?v=202610291011"></script>
+    <script src="vendor/rhwptopdf/rhwptopdf.umd.js?v=202610291011"></script>
+    <script src="document-convert.js?v=202610291011"></script>
+    <script src="seat-rules-panel.js?v=202610291011"></script>
+    <script src="duties-panel.js?v=202610291011"></script>
+    <script src="random-panel.js?v=202610291011"></script>
+    <script src="timer-panel.js?v=202610291011"></script>
+    <script src="print-output.js?v=202610291011"></script>
+    <script src="script.js?v=202610291011"></script>
+    <script defer src="vendor/sortablejs/Sortable.min.js?v=202610291011" onerror="ctLoadFromCdn('https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js')"></script>
+    <script defer src="vendor/sheetjs/xlsx.full.min.js?v=202610291011" onerror="ctLoadFromCdn('https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js')"></script>
   </body>
 </html>

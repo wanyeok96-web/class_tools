@@ -11,10 +11,81 @@
     { id: 'gold', label: '금색', value: '#b8860b' },
   ];
 
-  const STAMP_SIZES = [256, 512, 1024];
+  /**
+   * 도장 서체. web: Google Fonts(OFL)에서 필요한 글자만 내려받음, system: PC에 설치된 글꼴.
+   * 불러오지 못하면 family 목록의 다음 글꼴로 그려진다.
+   * scale: 서체마다 글자 크기가 달라 고딕과 비슷한 크기로 보이도록 맞춘 배율
+   */
+  const STAMP_FONTS = [
+    { id: 'gothic', label: '고딕', weight: 800, scale: 1, family: 'Pretendard, "Malgun Gothic", sans-serif' },
+    { id: 'myeongjo', label: '명조', weight: 800, scale: 0.96, web: 'Nanum Myeongjo', family: '"Nanum Myeongjo", "함초롬바탕", "HCR Batang", Batang, serif' },
+    { id: 'gungseo', label: '궁서', weight: 400, scale: 0.95, system: 'Gungsuh', family: 'Gungsuh, "궁서", GungSeo, "Nanum Myeongjo", serif' },
+    { id: 'brush', label: '붓글씨', weight: 400, scale: 1.12, web: 'Nanum Brush Script', family: '"Nanum Brush Script", Gungsuh, "궁서", cursive' },
+    { id: 'pen', label: '손글씨', weight: 400, scale: 1.24, web: 'Nanum Pen Script', family: '"Nanum Pen Script", cursive' },
+    { id: 'heavy', label: '굵은 제목체', weight: 400, scale: 1.18, web: 'Black Han Sans', family: '"Black Han Sans", Pretendard, sans-serif' },
+  ];
+  const WEB_FONT_CSS = 'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@800&family=Nanum+Brush+Script&family=Nanum+Pen+Script&family=Black+Han+Sans&display=swap';
+  const SAMPLE_TEXT = '홍길동';
 
   function $(sel, ctx = document) {
     return ctx.querySelector(sel);
+  }
+
+  function getStampFont(id) {
+    return STAMP_FONTS.find((f) => f.id === id) || STAMP_FONTS[0];
+  }
+
+  function fontCss(font, px) {
+    return `${font.weight} ${px * (font.scale || 1)}px ${font.family}`;
+  }
+
+  let webFontCssPromise = null;
+
+  /** Google Fonts 스타일시트를 한 번만 붙이고, 읽기를 마치면(실패해도) 끝나는 Promise를 돌려준다 */
+  function ensureWebFontCss() {
+    if (webFontCssPromise) return webFontCssPromise;
+    webFontCssPromise = new Promise((resolve) => {
+      const link = document.createElement('link');
+      link.id = 'ctStampFontCss';
+      link.rel = 'stylesheet';
+      link.href = WEB_FONT_CSS;
+      link.onload = () => resolve(true);
+      link.onerror = () => resolve(false);
+      setTimeout(() => resolve(false), 6000);
+      document.head.appendChild(link);
+    });
+    return webFontCssPromise;
+  }
+
+  /** 시스템 글꼴 설치 여부 — 대체 글꼴과 글자 폭이 다르면 설치된 것으로 본다 */
+  function isSystemFontAvailable(name) {
+    const ctx = document.createElement('canvas').getContext('2d');
+    const text = '홍길동인 도장';
+    return ['monospace', 'serif'].some((fallback) => {
+      ctx.font = `40px ${fallback}`;
+      const base = ctx.measureText(text).width;
+      ctx.font = `40px "${name}", ${fallback}`;
+      return ctx.measureText(text).width !== base;
+    });
+  }
+
+  /**
+   * 캔버스에 그리기 전에 글꼴(해당 글자 부분)을 불러온다.
+   * @returns {Promise<boolean>} 원하는 서체로 그릴 수 있으면 true
+   */
+  async function loadStampFont(font, text) {
+    if (font.system) return isSystemFontAvailable(font.system);
+    if (!font.web) return true;
+    if (!(await ensureWebFontCss())) return false;
+    try {
+      const loaded = await Promise.race([
+        document.fonts.load(fontCss(font, 64), text || SAMPLE_TEXT),
+        new Promise((resolve) => setTimeout(() => resolve([]), 6000)),
+      ]);
+      return loaded.some((face) => face.family.replace(/["']/g, '') === font.web);
+    } catch {
+      return false;
+    }
   }
 
   function downloadBlob(blob, filename) {
@@ -131,6 +202,7 @@
       chars,
       color,
       border,
+      font = STAMP_FONTS[0],
     } = options;
     const cx = size / 2;
     const cy = size / 2;
@@ -156,7 +228,7 @@
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `800 ${fontSize}px Pretendard, "Malgun Gothic", sans-serif`;
+    ctx.font = fontCss(font, fontSize);
 
     const positions = stampCellPositions(chars.length, cx, cy, cellSize);
     positions.forEach((pos) => {
@@ -198,7 +270,48 @@
     this.stampSize = 512;
     this.stampBorder = true;
     this.stampAppendIn = true;
+    this.stampFontId = STAMP_FONTS[0].id;
+    this.fontRequest = 0;
+    /** 서체별 불러오기 결과 — false면 대체 글꼴로 그려지므로 크기 보정을 하지 않는다 */
+    this.fontReady = {};
   }
+
+  /** 대체 글꼴(대개 궁서·명조 계열)로 그려질 때는 그 글꼴에 맞는 배율을 써서 도장 밖으로 넘치지 않게 한다 */
+  SignatureMaker.prototype.effectiveFont = function effectiveFont(font) {
+    return this.fontReady[font.id] === false ? { ...font, scale: 0.95 } : font;
+  };
+
+  SignatureMaker.prototype.renderFontChips = function renderFontChips() {
+    const wrap = $('#signatureStampFonts');
+    if (!wrap) return;
+    ensureWebFontCss();
+    const text = this.getStampOptions().chars.join('') || SAMPLE_TEXT;
+    const chipSize = (font) => `${(1.3 * (this.effectiveFont(font).scale || 1)).toFixed(2)}rem`;
+    wrap.innerHTML = STAMP_FONTS.map((font) => `
+      <button type="button" class="signature-font-chip${font.id === this.stampFontId ? ' is-active' : ''}"
+        data-font="${font.id}" aria-pressed="${font.id === this.stampFontId}" title="${font.label}">
+        <span class="signature-font-chip__sample" style="font-family:${font.family.replace(/"/g, '&quot;')};font-weight:${font.weight};font-size:${chipSize(font)}"></span>
+        <span class="signature-font-chip__label">${font.label}</span>
+      </button>`).join('');
+    wrap.querySelectorAll('.signature-font-chip__sample').forEach((el) => { el.textContent = text; });
+
+    // 서체를 미리 불러와 두고, 못 불러온 서체는 칩 글자 크기 보정을 되돌린다
+    STAMP_FONTS.forEach((font) => {
+      loadStampFont(font, text).then((ok) => {
+        this.fontReady[font.id] = ok;
+        const sample = wrap.querySelector(`[data-font="${font.id}"] .signature-font-chip__sample`);
+        if (sample) sample.style.fontSize = chipSize(font);
+        if (font.id === this.stampFontId && this.stampCanvas) {
+          renderStampPreview(this.stampCanvas, this.getStampOptions());
+        }
+      });
+    });
+  };
+
+  SignatureMaker.prototype.syncFontChipSamples = function syncFontChipSamples() {
+    const text = this.getStampOptions().chars.join('') || SAMPLE_TEXT;
+    document.querySelectorAll('.signature-font-chip__sample').forEach((el) => { el.textContent = text; });
+  };
 
   SignatureMaker.prototype.bind = function bind() {
     if (this.bound) return;
@@ -251,6 +364,19 @@
     });
     $('#signatureStampBorder')?.addEventListener('change', (e) => {
       this.stampBorder = e.target.checked;
+      this.updateStampPreview();
+    });
+
+    this.renderFontChips();
+    $('#signatureStampFonts')?.addEventListener('click', (e) => {
+      const chip = e.target.closest('.signature-font-chip');
+      if (!chip) return;
+      this.stampFontId = chip.dataset.font;
+      document.querySelectorAll('.signature-font-chip').forEach((c) => {
+        const active = c === chip;
+        c.classList.toggle('is-active', active);
+        c.setAttribute('aria-pressed', String(active));
+      });
       this.updateStampPreview();
     });
 
@@ -485,6 +611,7 @@
       chars,
       color: this.stampColor,
       border: this.stampBorder,
+      font: this.effectiveFont(getStampFont(this.stampFontId)),
     };
   };
 
@@ -492,21 +619,39 @@
     if (!this.stampCanvas) return;
     const opts = this.getStampOptions();
     renderStampPreview(this.stampCanvas, opts);
+    this.syncFontChipSamples();
     const hint = $('#signatureStampHint');
     if (hint) {
       hint.textContent = opts.chars.length
         ? `${opts.chars.length}자 · ${opts.chars.join('')}`
         : '2~4자 한글을 입력하세요 (「인」 자동 추가 가능)';
     }
+
+    // 글꼴이 늦게 도착하면 다시 그린다 (그 사이 다른 서체·글자로 바뀌었으면 무시)
+    const request = ++this.fontRequest;
+    const text = opts.chars.join('') || SAMPLE_TEXT;
+    loadStampFont(opts.font, text).then((ok) => {
+      this.fontReady[opts.font.id] = ok;
+      if (request !== this.fontRequest) return;
+      renderStampPreview(this.stampCanvas, this.getStampOptions());
+      const fontHint = $('#signatureFontHint');
+      if (!fontHint) return;
+      fontHint.hidden = ok;
+      fontHint.textContent = ok ? '' : (opts.font.system
+        ? `이 PC에 ${opts.font.label} 글꼴이 없어 비슷한 글꼴로 표시됩니다.`
+        : `인터넷에 연결되어 있지 않아 ${opts.font.label} 서체를 불러오지 못했습니다. 비슷한 글꼴로 표시됩니다.`);
+    });
   };
 
   SignatureMaker.prototype.saveStampPng = async function saveStampPng() {
-    const opts = this.getStampOptions();
-    if (opts.chars.length < 2) {
+    const first = this.getStampOptions();
+    if (first.chars.length < 2) {
       window.ctShowToast?.('도장 글자를 2자 이상 입력해주세요.');
       return;
     }
     try {
+      this.fontReady[first.font.id] = await loadStampFont(first.font, first.chars.join(''));
+      const opts = this.getStampOptions();
       const canvas = buildStampCanvas(opts);
       const blob = await canvasToPngBlob(canvas);
       downloadBlob(blob, `도장_${opts.chars.join('')}.png`);
